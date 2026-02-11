@@ -6,12 +6,14 @@ import {
   ASSISTANT_NAME,
   DATA_DIR,
   IDLE_TIMEOUT,
-  IMESSAGE_ONLY,
   MAIN_GROUP_FOLDER,
-  POLL_INTERVAL,
   TRIGGER_PATTERN,
 } from './config.js';
-import { WhatsAppChannel } from './channels/whatsapp.js';
+import {
+  IMessageChannel,
+  approveIMessageContact as approveIMessageContactHelper,
+  denyIMessageContact as denyIMessageContactHelper,
+} from './channels/imessage.js';
 import { CollaborationWatcher } from './collaboration-watcher.js';
 import {
   ContainerOutput,
@@ -26,7 +28,6 @@ import {
   getAllTasks,
   getBlockedContacts,
   getMessagesSince,
-  getNewMessages,
   getPendingApprovals,
   getRouterState,
   initDatabase,
@@ -34,37 +35,25 @@ import {
   setRouterState,
   setSession,
   storeChatMetadata,
-  storeMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
-import {
-  approveIMessageContact,
-  connectIMessage,
-  denyIMessageContact,
-  sendIMessage,
-  setIMessageTyping,
-  stopIMessage,
-} from './imessage.js';
 import { startIpcWatcher } from './ipc.js';
-import { formatMessages, formatOutbound } from './router.js';
+import { formatMessages } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
-// Re-export for backwards compatibility during refactor
+// Re-export for backwards compatibility
 export { escapeXml, formatMessages } from './router.js';
 
-let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
-let messageLoopRunning = false;
 
-let whatsapp: WhatsAppChannel;
+let imessage: IMessageChannel;
 const queue = new GroupQueue();
 
 function loadState(): void {
-  lastTimestamp = getRouterState('last_timestamp') || '';
   const agentTs = getRouterState('last_agent_timestamp');
   try {
     lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
@@ -81,7 +70,6 @@ function loadState(): void {
 }
 
 function saveState(): void {
-  setRouterState('last_timestamp', lastTimestamp);
   setRouterState(
     'last_agent_timestamp',
     JSON.stringify(lastAgentTimestamp),
@@ -301,22 +289,11 @@ async function runAgent(
 }
 
 async function sendMessage(jid: string, text: string): Promise<void> {
-  // Route iMessage messages
-  if (jid.startsWith('imsg:')) {
-    await sendIMessage(jid, text);
-    return;
-  }
-
-  // WhatsApp path
-  await whatsapp.sendMessage(jid, formatOutbound(text));
+  await imessage.sendMessage(jid, text);
 }
 
 async function setTyping(jid: string, isTyping: boolean): Promise<void> {
-  if (jid.startsWith('imsg:')) {
-    await setIMessageTyping(jid, isTyping);
-  } else {
-    await whatsapp.setTyping(jid, isTyping);
-  }
+  await imessage.setTyping(jid, isTyping);
 }
 
 async function startMessageLoop(): Promise<void> {
@@ -494,48 +471,36 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
     await queue.shutdown(10000);
-    await whatsapp.disconnect();
-    if (!IMESSAGE_ONLY) {
-      stopIMessage();
-    }
+    await imessage.disconnect();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // Create WhatsApp channel
-  whatsapp = new WhatsAppChannel({
-    onMessage: (chatJid, msg) => storeMessage(msg),
-    onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
+  // Create iMessage channel
+  imessage = new IMessageChannel({
+    onMessage: (chatJid, msg) => {
+      queue.enqueueMessageCheck(chatJid);
+    },
+    onApprovalRequest: async (chatJid, contactInfo, firstMessage) => {
+      logger.info({ chatJid, contactInfo }, 'New iMessage contact pending approval');
+      // Notify main agent about pending approval
+      const mainJid = Object.keys(registeredGroups).find(
+        jid => registeredGroups[jid].folder === MAIN_GROUP_FOLDER
+      );
+      if (mainJid) {
+        const pendingApprovals = getPendingApprovals();
+        const blockedContacts = getBlockedContacts();
+        const summary = `📱 iMessage Contact Approvals Needed:\n\nPending:\n${pendingApprovals.map(a => `- ${a.contact_info}: ${a.first_message || '(no message)'}`).join('\n')}\n\nBlocked:\n${blockedContacts.map(b => `- ${b.contact_info}: ${b.reason || 'no reason'}`).join('\n')}`;
+        await sendMessage(mainJid, summary);
+      }
+    },
     registeredGroups: () => registeredGroups,
+    registerGroup,
   });
 
-  // Connect — resolves when first connected
-  await whatsapp.connect();
-
-  // Start iMessage if enabled
-  if (!IMESSAGE_ONLY) {
-    connectIMessage({
-      onMessage: (chatJid, msg) => {
-        queue.enqueueMessageCheck(chatJid);
-      },
-      onApprovalRequest: async (chatJid, contactInfo, firstMessage) => {
-        logger.info({ chatJid, contactInfo }, 'New iMessage contact pending approval');
-        // Notify main agent about pending approval
-        const mainJid = Object.keys(registeredGroups).find(
-          jid => registeredGroups[jid].folder === MAIN_GROUP_FOLDER
-        );
-        if (mainJid) {
-          const pendingApprovals = getPendingApprovals();
-          const blockedContacts = getBlockedContacts();
-          const summary = `📱 iMessage Contact Approvals Needed:\n\nPending:\n${pendingApprovals.map(a => `- ${a.contact_info}: ${a.first_message || '(no message)'}`).join('\n')}\n\nBlocked:\n${blockedContacts.map(b => `- ${b.contact_info}: ${b.reason || 'no reason'}`).join('\n')}`;
-          await sendMessage(mainJid, summary);
-        }
-      },
-      registeredGroups: () => registeredGroups,
-      registerGroup,
-    });
-  }
+  // Connect — starts polling
+  await imessage.connect();
 
   // Start collaboration folder watcher
   function startCollaborationWatcher(): void {
@@ -590,15 +555,17 @@ async function main(): Promise<void> {
     sendMessage,
     registeredGroups: () => registeredGroups,
     registerGroup,
-    syncGroupMetadata: (force) => whatsapp.syncGroupMetadata(force),
+    syncGroupMetadata: async () => {
+      // No-op for iMessage - no group metadata sync needed
+    },
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
-    approveIMessageContact,
-    denyIMessageContact,
+    approveIMessageContact: (chatJid) => approveIMessageContactHelper(chatJid, imessage, { registeredGroups: () => registeredGroups, registerGroup }),
+    denyIMessageContact: denyIMessageContactHelper,
   });
   queue.setProcessMessagesFn(processGroupMessages);
-  recoverPendingMessages();
-  startMessageLoop();
+
+  logger.info(`NanoClaw running (iMessage, trigger: @${ASSISTANT_NAME})`);
 }
 
 // Guard: only run when executed directly, not when imported by tests
