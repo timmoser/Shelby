@@ -44,6 +44,11 @@ async function runTask(
     'Running scheduled task',
   );
 
+  // IMPORTANT: Update next_run IMMEDIATELY to prevent scheduler from re-enqueueing this task
+  // We'll update it again with the correct value after completion
+  const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year from now
+  updateTaskAfterRun(task.id, farFuture, 'Running...');
+
   const groups = deps.registeredGroups();
   const group = Object.values(groups).find(
     (g) => g.folder === task.group_folder,
@@ -62,6 +67,8 @@ async function runTask(
       result: null,
       error: `Group not found: ${task.group_folder}`,
     });
+    // Reset next_run since we failed immediately
+    updateTaskAfterRun(task.id, null, `Error: Group not found: ${task.group_folder}`);
     return;
   }
 

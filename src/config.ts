@@ -1,12 +1,26 @@
 import path from 'path';
 
-export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Andy';
+export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Shelby';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+export const TELEGRAM_ONLY = process.env.TELEGRAM_ONLY === 'true';
+export const IMESSAGE_SERVER_URL = process.env.IMESSAGE_SERVER_URL || '';
+export const IMESSAGE_PASSWORD = process.env.IMESSAGE_PASSWORD || '';
+export const IMESSAGE_WEBHOOK_PORT = parseInt(
+  process.env.IMESSAGE_WEBHOOK_PORT || '3001',
+  10,
+);
+export const IMESSAGE_ONLY = process.env.IMESSAGE_ONLY === 'true';
 
 // Absolute paths needed for container mounts
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || '/Users/user';
+
+// iMessage collaboration folder (shared workspace for isolated agents)
+export const IMESSAGE_COLLABORATION_FOLDER =
+  process.env.IMESSAGE_COLLABORATION_FOLDER ||
+  path.join(HOME_DIR, 'nanoclaw-collaboration');
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
 export const MOUNT_ALLOWLIST_PATH = path.join(
@@ -32,9 +46,9 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
 ); // 10MB default
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(
-  process.env.IDLE_TIMEOUT || '1800000',
+  process.env.IDLE_TIMEOUT || '300000',
   10,
-); // 30min default — how long to keep container alive after last result
+); // 5min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,

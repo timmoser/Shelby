@@ -3,7 +3,7 @@
 
 FROM node:22-slim
 
-# Install system dependencies for Chromium
+# Install system dependencies for Chromium and inotify
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     curl \
     git \
+    inotify-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Chromium path for agent-browser

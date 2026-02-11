@@ -106,6 +106,21 @@ export function initDatabase(): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS pending_imessage_approvals (
+      chat_jid TEXT PRIMARY KEY,
+      contact_info TEXT NOT NULL,
+      first_message TEXT,
+      requested_at TEXT NOT NULL,
+      notified INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS blocked_imessage_contacts (
+      chat_jid TEXT PRIMARY KEY,
+      contact_info TEXT NOT NULL,
+      blocked_at TEXT NOT NULL,
+      reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pending_approvals_requested ON pending_imessage_approvals(requested_at);
+    CREATE INDEX IF NOT EXISTS idx_blocked_contacts_blocked ON blocked_imessage_contacts(blocked_at);
   `);
 
   // Migrate from JSON files if they exist
@@ -233,6 +248,31 @@ export function storeMessage(
     content,
     timestamp,
     isFromMe ? 1 : 0,
+  );
+}
+
+/**
+ * Store a message directly (for non-WhatsApp channels that don't use Baileys proto).
+ */
+export function storeMessageDirect(msg: {
+  id: string;
+  chat_jid: string;
+  sender: string;
+  sender_name: string;
+  content: string;
+  timestamp: string;
+  is_from_me: boolean;
+}): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    msg.id,
+    msg.chat_jid,
+    msg.sender,
+    msg.sender_name,
+    msg.content,
+    msg.timestamp,
+    msg.is_from_me ? 1 : 0,
   );
 }
 
@@ -586,4 +626,86 @@ function migrateJsonState(): void {
       setRegisteredGroup(jid, group);
     }
   }
+}
+
+// --- iMessage Approval Workflow ---
+
+export interface PendingApproval {
+  chat_jid: string;
+  contact_info: string;
+  first_message: string | null;
+  requested_at: string;
+  notified: number;
+}
+
+export interface BlockedContact {
+  chat_jid: string;
+  contact_info: string;
+  blocked_at: string;
+  reason: string | null;
+}
+
+export function addPendingApproval(
+  chatJid: string,
+  contactInfo: string,
+  firstMessage: string | null,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO pending_imessage_approvals (chat_jid, contact_info, first_message, requested_at, notified)
+     VALUES (?, ?, ?, ?, 0)`,
+  ).run(chatJid, contactInfo, firstMessage, new Date().toISOString());
+}
+
+export function getPendingApprovals(): PendingApproval[] {
+  return db
+    .prepare('SELECT * FROM pending_imessage_approvals ORDER BY requested_at DESC')
+    .all() as PendingApproval[];
+}
+
+export function getPendingApproval(chatJid: string): PendingApproval | undefined {
+  return db
+    .prepare('SELECT * FROM pending_imessage_approvals WHERE chat_jid = ?')
+    .get(chatJid) as PendingApproval | undefined;
+}
+
+export function markApprovalNotified(chatJid: string): void {
+  db.prepare('UPDATE pending_imessage_approvals SET notified = 1 WHERE chat_jid = ?').run(
+    chatJid,
+  );
+}
+
+export function removePendingApproval(chatJid: string): void {
+  db.prepare('DELETE FROM pending_imessage_approvals WHERE chat_jid = ?').run(
+    chatJid,
+  );
+}
+
+export function addBlockedContact(
+  chatJid: string,
+  contactInfo: string,
+  reason: string | null,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO blocked_imessage_contacts (chat_jid, contact_info, blocked_at, reason)
+     VALUES (?, ?, ?, ?)`,
+  ).run(chatJid, contactInfo, new Date().toISOString(), reason);
+}
+
+export function isContactBlocked(chatJid: string): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM blocked_imessage_contacts WHERE chat_jid = ?')
+    .get(chatJid);
+  return !!row;
+}
+
+export function getBlockedContacts(): BlockedContact[] {
+  return db
+    .prepare('SELECT * FROM blocked_imessage_contacts ORDER BY blocked_at DESC')
+    .all() as BlockedContact[];
+}
+
+export function removeBlockedContact(chatJid: string): void {
+  db.prepare('DELETE FROM blocked_imessage_contacts WHERE chat_jid = ?').run(
+    chatJid,
+  );
 }

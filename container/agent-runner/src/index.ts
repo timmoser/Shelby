@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { FileWatcher } from './file-watcher.js';
 
 interface ContainerInput {
   prompt: string;
@@ -56,6 +57,10 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+
+// File watcher for push notifications (global instance)
+let fileWatcher: FileWatcher | null = null;
+let ipcChangeListeners: (() => void)[] = [];
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -303,9 +308,45 @@ function drainIpcInput(): string[] {
 /**
  * Wait for a new IPC message or _close sentinel.
  * Returns the messages as a single string, or null if _close.
+ * Uses file watcher for push notifications if available, falls back to polling.
  */
 function waitForIpcMessage(): Promise<string | null> {
   return new Promise((resolve) => {
+    // Check immediately first
+    if (shouldClose()) {
+      resolve(null);
+      return;
+    }
+    const messages = drainIpcInput();
+    if (messages.length > 0) {
+      resolve(messages.join('\n'));
+      return;
+    }
+
+    // Use file watcher if available
+    if (fileWatcher) {
+      const onChange = () => {
+        // Remove listener first
+        const idx = ipcChangeListeners.indexOf(onChange);
+        if (idx !== -1) ipcChangeListeners.splice(idx, 1);
+
+        if (shouldClose()) {
+          resolve(null);
+          return;
+        }
+        const messages = drainIpcInput();
+        if (messages.length > 0) {
+          resolve(messages.join('\n'));
+        } else {
+          // False alarm, re-register
+          ipcChangeListeners.push(onChange);
+        }
+      };
+      ipcChangeListeners.push(onChange);
+      return;
+    }
+
+    // Fallback to polling if watcher unavailable
     const poll = () => {
       if (shouldClose()) {
         resolve(null);
@@ -318,7 +359,7 @@ function waitForIpcMessage(): Promise<string | null> {
       }
       setTimeout(poll, IPC_POLL_MS);
     };
-    poll();
+    setTimeout(poll, IPC_POLL_MS);
   });
 }
 
@@ -338,10 +379,11 @@ async function runQuery(
   const stream = new MessageStream();
   stream.push(prompt);
 
-  // Poll IPC for follow-up messages and _close sentinel during the query
+  // Monitor IPC for follow-up messages and _close sentinel during the query
   let ipcPolling = true;
   let closedDuringQuery = false;
-  const pollIpcDuringQuery = () => {
+
+  const checkIpcDuringQuery = () => {
     if (!ipcPolling) return;
     if (shouldClose()) {
       log('Close sentinel detected during query, ending stream');
@@ -355,9 +397,36 @@ async function runQuery(
       log(`Piping IPC message into active query (${text.length} chars)`);
       stream.push(text);
     }
-    setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
   };
-  setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
+
+  // Use file watcher if available, otherwise poll
+  if (fileWatcher) {
+    const onChange = () => {
+      if (!ipcPolling) {
+        const idx = ipcChangeListeners.indexOf(onChange);
+        if (idx !== -1) ipcChangeListeners.splice(idx, 1);
+        return;
+      }
+      checkIpcDuringQuery();
+    };
+    ipcChangeListeners.push(onChange);
+
+    // Also check periodically in case we miss an event
+    const backupPoll = () => {
+      if (!ipcPolling) return;
+      checkIpcDuringQuery();
+      setTimeout(backupPoll, IPC_POLL_MS * 4); // Less frequent backup poll
+    };
+    setTimeout(backupPoll, IPC_POLL_MS * 4);
+  } else {
+    // Fallback to regular polling
+    const pollIpcDuringQuery = () => {
+      if (!ipcPolling) return;
+      checkIpcDuringQuery();
+      setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
+    };
+    setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
+  }
 
   let newSessionId: string | undefined;
   let lastAssistantUuid: string | undefined;
@@ -468,6 +537,45 @@ async function main(): Promise<void> {
 
   // Clean up stale _close sentinel from previous container runs
   try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+
+  // Initialize file watcher for push notifications
+  try {
+    const watchDirs = [
+      IPC_INPUT_DIR,
+      '/workspace/collaboration',
+      '/workspace/icloud',
+      '/workspace/group',
+    ];
+    fileWatcher = new FileWatcher(watchDirs);
+    fileWatcher.on('change', (event) => {
+      // Log file changes for debugging
+      if (!event.path.includes('/ipc/input')) {
+        log(`File change detected: ${event.path}`);
+      }
+
+      // Notify all IPC listeners when input directory changes
+      if (event.path.startsWith(IPC_INPUT_DIR)) {
+        for (const listener of ipcChangeListeners) {
+          listener();
+        }
+      }
+    });
+    fileWatcher.start();
+    log('File watcher started for push notifications');
+  } catch (err) {
+    log(`File watcher unavailable, falling back to polling: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Clean up watcher on exit
+  const cleanup = () => {
+    if (fileWatcher) {
+      fileWatcher.stop();
+      fileWatcher = null;
+    }
+  };
+  process.on('exit', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
 
   // Build initial prompt (drain any pending IPC messages too)
   let prompt = containerInput.prompt;

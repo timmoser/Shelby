@@ -29,7 +29,8 @@ export interface AllowedRoot {
 
 export interface ContainerConfig {
   additionalMounts?: AdditionalMount[];
-  timeout?: number; // Default: 300000 (5 minutes)
+  timeout?: number; // Container timeout in ms (default: 1800000 = 30 min)
+  idleTimeout?: number; // Idle timeout in ms before closing stdin (default: 300000 = 5 min)
 }
 
 export interface RegisteredGroup {

@@ -10,14 +10,18 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { CronExpressionParser } from 'cron-parser';
 
+import { CollaborationWatcher } from './collaboration-watcher.js';
 import {
   ASSISTANT_NAME,
   DATA_DIR,
   IDLE_TIMEOUT,
+  IMESSAGE_ONLY,
   IPC_POLL_INTERVAL,
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
   STORE_DIR,
+  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_ONLY,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -31,6 +35,7 @@ import {
 import {
   createTask,
   deleteTask,
+  getBlockedContacts,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -38,6 +43,7 @@ import {
   getLastGroupSync,
   getMessagesSince,
   getNewMessages,
+  getPendingApprovals,
   getRouterState,
   getTaskById,
   initDatabase,
@@ -51,7 +57,21 @@ import {
   updateTask,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
+import {
+  approveIMessageContact,
+  connectIMessage,
+  denyIMessageContact,
+  sendIMessage,
+  setIMessageTyping,
+  stopIMessage,
+} from './imessage.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import {
+  connectTelegram,
+  sendTelegramMessage,
+  setTelegramTyping,
+  stopTelegram,
+} from './telegram.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -90,6 +110,14 @@ function translateJid(jid: string): string {
 }
 
 async function setTyping(jid: string, isTyping: boolean): Promise<void> {
+  if (jid.startsWith('imsg:')) {
+    if (isTyping) await setIMessageTyping(jid);
+    return;
+  }
+  if (jid.startsWith('tg:')) {
+    if (isTyping) await setTelegramTyping(jid);
+    return;
+  }
   try {
     await sock.sendPresenceUpdate(isTyping ? 'composing' : 'paused', jid);
   } catch (err) {
@@ -184,7 +212,7 @@ function getAvailableGroups(): AvailableGroup[] {
   const registeredJids = new Set(Object.keys(registeredGroups));
 
   return chats
-    .filter((c) => c.jid !== '__group_sync__' && c.jid.endsWith('@g.us'))
+    .filter((c) => c.jid !== '__group_sync__' && (c.jid.endsWith('@g.us') || c.jid.startsWith('tg:') || c.jid.startsWith('imsg:')))
     .map((c) => ({
       jid: c.jid,
       name: c.name,
@@ -256,13 +284,14 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // Track idle timer for closing stdin when agent is idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const groupIdleTimeout = group.containerConfig?.idleTimeout || IDLE_TIMEOUT;
 
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       logger.debug({ group: group.name }, 'Idle timeout, closing container stdin');
       queue.closeStdin(chatJid);
-    }, IDLE_TIMEOUT);
+    }, groupIdleTimeout);
   };
 
   await setTyping(chatJid, true);
@@ -276,7 +305,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
-        await sendMessage(chatJid, `${ASSISTANT_NAME}: ${text}`);
+        await sendMessage(chatJid, text);
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -381,6 +410,19 @@ async function runAgent(
 }
 
 async function sendMessage(jid: string, text: string): Promise<void> {
+  // Route iMessage messages
+  if (jid.startsWith('imsg:')) {
+    await sendIMessage(jid, text);
+    return;
+  }
+
+  // Route Telegram messages
+  if (jid.startsWith('tg:')) {
+    await sendTelegramMessage(jid, text);
+    return;
+  }
+
+  // WhatsApp path (with outgoing queue for reconnection)
   if (!waConnected) {
     outgoingQueue.push({ jid, text });
     logger.info({ jid, length: text.length, queueSize: outgoingQueue.length }, 'WA disconnected, message queued');
@@ -411,6 +453,89 @@ async function flushOutgoingQueue(): Promise<void> {
     }
   } finally {
     flushing = false;
+  }
+}
+
+function startCollaborationWatcher(): void {
+  const watcher = new CollaborationWatcher();
+
+  watcher.on('change', (event: { path: string; event: string }) => {
+    logger.debug({ path: event.path, event: event.event }, 'Collaboration folder changed');
+
+    // Find groups that have this folder mounted
+    const affectedGroups: string[] = [];
+    const changedDir = path.dirname(event.path);
+
+    for (const [jid, group] of Object.entries(registeredGroups)) {
+      if (!group.containerConfig?.additionalMounts) continue;
+
+      for (const mount of group.containerConfig.additionalMounts) {
+        // Check if the changed file is in this mount
+        const expandedPath = mount.hostPath.replace('~', process.env.HOME || '');
+        if (event.path.startsWith(expandedPath)) {
+          affectedGroups.push(jid);
+          break;
+        }
+      }
+    }
+
+    if (affectedGroups.length > 0) {
+      logger.info(
+        { groups: affectedGroups.map(jid => registeredGroups[jid]?.name), file: path.basename(event.path) },
+        'Triggering agents for collaboration folder change',
+      );
+
+      // Trigger each affected group - start containers if needed
+      for (const jid of affectedGroups) {
+        const group = registeredGroups[jid];
+        if (!group) continue;
+
+        try {
+          const inputDir = path.join(DATA_DIR, 'ipc', group.folder, 'input');
+          fs.mkdirSync(inputDir, { recursive: true });
+
+          const notification = {
+            type: 'message',
+            text: `[File changed in collaboration folder: ${path.basename(event.path)}]`,
+          };
+
+          fs.writeFileSync(
+            path.join(inputDir, `collab-change-${Date.now()}.json`),
+            JSON.stringify(notification, null, 2),
+          );
+
+          // Actually trigger agent processing by enqueueing a task
+          queue.enqueueTask(jid, `collab-file-${Date.now()}`, async () => {
+            // The task just needs to start the agent - the IPC file will be picked up
+            const isMain = group.folder === MAIN_GROUP_FOLDER;
+            const prompt = `[A file was modified in your collaboration folder: ${path.basename(event.path)}]`;
+
+            await runAgent(group, prompt, jid, async (result) => {
+              if (result.result) {
+                const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+                const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+                if (text) {
+                  await sendMessage(jid, text);
+                }
+              }
+            });
+          });
+        } catch (err) {
+          logger.error({ jid, err }, 'Failed to notify group of collaboration change');
+        }
+      }
+    }
+  });
+
+  watcher.on('error', (err) => {
+    logger.error({ err }, 'Collaboration watcher error');
+  });
+
+  try {
+    watcher.start();
+    logger.info('Collaboration folder watcher started');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to start collaboration watcher');
   }
 }
 
@@ -462,7 +587,7 @@ function startIpcWatcher(): void {
                 ) {
                   await sendMessage(
                     data.chatJid,
-                    `${ASSISTANT_NAME}: ${data.text}`,
+                    data.text,
                   );
                   logger.info(
                     { chatJid: data.chatJid, sourceGroup },
@@ -753,6 +878,82 @@ async function processTaskIpc(
       }
       break;
 
+    case 'approve_imessage_contact':
+      // Only main group can approve contacts
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized approve_imessage_contact attempt blocked');
+        break;
+      }
+      if (data.chatJid) {
+        const useMainAgent = (data as any).useMainAgent === true;
+        approveIMessageContact(data.chatJid, registerGroup, useMainAgent)
+          .then((result) => {
+            if (result.success) {
+              const mode = useMainAgent ? 'main agent' : 'isolated agent';
+              logger.info({ chatJid: data.chatJid, mode }, 'iMessage contact approved');
+            } else {
+              logger.error({ chatJid: data.chatJid, error: result.error }, 'Failed to approve iMessage contact');
+            }
+          })
+          .catch((err) => {
+            logger.error({ err, chatJid: data.chatJid }, 'Error approving contact');
+          });
+      } else {
+        logger.warn({ data }, 'Invalid approve_imessage_contact request - missing chatJid');
+      }
+      break;
+
+    case 'deny_imessage_contact':
+      // Only main group can deny contacts
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized deny_imessage_contact attempt blocked');
+        break;
+      }
+      if (data.chatJid) {
+        denyIMessageContact(data.chatJid, (data as any).reason)
+          .then((result) => {
+            if (result.success) {
+              logger.info({ chatJid: data.chatJid }, 'iMessage contact denied and blocked');
+            } else {
+              logger.error({ chatJid: data.chatJid, error: result.error }, 'Failed to deny iMessage contact');
+            }
+          })
+          .catch((err) => {
+            logger.error({ err, chatJid: data.chatJid }, 'Error denying contact');
+          });
+      } else {
+        logger.warn({ data }, 'Invalid deny_imessage_contact request - missing chatJid');
+      }
+      break;
+
+    case 'list_pending_imessage_approvals':
+      // Only main group can list pending approvals
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized list_pending_imessage_approvals attempt blocked');
+        break;
+      }
+      try {
+        const pending = getPendingApprovals();
+        logger.info({ count: pending.length }, 'Listed pending iMessage approvals');
+      } catch (err) {
+        logger.error({ err }, 'Error listing pending approvals');
+      }
+      break;
+
+    case 'list_blocked_imessage_contacts':
+      // Only main group can list blocked contacts
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized list_blocked_imessage_contacts attempt blocked');
+        break;
+      }
+      try {
+        const blocked = getBlockedContacts();
+        logger.info({ count: blocked.length }, 'Listed blocked iMessage contacts');
+      } catch (err) {
+        logger.error({ err }, 'Error listing blocked contacts');
+      }
+      break;
+
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
   }
@@ -848,6 +1049,7 @@ async function connectWhatsApp(): Promise<void> {
         assistantName: ASSISTANT_NAME,
       });
       startIpcWatcher();
+      startCollaborationWatcher();
       queue.setProcessMessagesFn(processGroupMessages);
       recoverPendingMessages();
       startMessageLoop();
@@ -1059,13 +1261,48 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    stopIMessage();
+    stopTelegram();
     await queue.shutdown(10000);
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  await connectWhatsApp();
+  // Start iMessage (native AppleScript polling, no BlueBubbles required)
+  await connectIMessage();
+
+  // Start Telegram bot if configured
+  const hasTelegram = !!TELEGRAM_BOT_TOKEN;
+  if (hasTelegram) {
+    await connectTelegram(TELEGRAM_BOT_TOKEN);
+  }
+
+  if (!TELEGRAM_ONLY && !IMESSAGE_ONLY) {
+    await connectWhatsApp();
+  } else {
+    // Messaging-only mode: start services without WhatsApp
+    startSchedulerLoop({
+      registeredGroups: () => registeredGroups,
+      getSessions: () => sessions,
+      queue,
+      onProcess: (groupJid, proc, containerName, groupFolder) =>
+        queue.registerProcess(groupJid, proc, containerName, groupFolder),
+      sendMessage,
+      assistantName: ASSISTANT_NAME,
+    });
+    startIpcWatcher();
+    startCollaborationWatcher();
+    queue.setProcessMessagesFn(processGroupMessages);
+    recoverPendingMessages();
+    startMessageLoop();
+
+    const channels = ['iMessage'];
+    if (hasTelegram) channels.push('Telegram');
+    logger.info(
+      `NanoClaw running (${channels.join(' + ')}, trigger: @${ASSISTANT_NAME})`,
+    );
+  }
 }
 
 main().catch((err) => {
