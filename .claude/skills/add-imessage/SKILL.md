@@ -1,13 +1,37 @@
 ---
 name: add-imessage
-description: Add native iMessage support via direct database access and AppleScript. No third-party software required. Each contact gets an isolated agent with optional collaboration workspace.
+description: Native iMessage channel implementation via direct database access and AppleScript. The core architecture of NanoClaw - implements the Channel interface for clean, extensible messaging.
 ---
 
-# Add iMessage Channel (Native Implementation)
+# iMessage Channel (Native Implementation)
 
-This skill adds **native iMessage support** to NanoClaw by reading directly from the Messages database and sending via AppleScript. **No BlueBubbles or Private API required** - completely secure and under your control.
+> **Status:** ✅ **Already Implemented** - This skill documents the existing iMessage channel architecture.
+
+NanoClaw's **primary messaging channel** - native iMessage support via direct database access and AppleScript. **No BlueBubbles or Private API required** - completely secure and under your control.
+
+**Current Implementation:** `src/channels/imessage.ts` - Full Channel interface implementation with approval workflow and collaboration support.
 
 ## Architecture
+
+### Channel Interface Implementation
+
+iMessage is implemented as a proper `Channel` following the NanoClaw channel architecture:
+
+```typescript
+export class IMessageChannel implements Channel {
+  name = 'imessage';
+  prefixAssistantName = false; // iMessage shows as you, not as a bot
+
+  async connect(): Promise<void>
+  async sendMessage(jid: string, text: string): Promise<void>
+  async setTyping(jid: string, isTyping: boolean): Promise<void>
+  isConnected(): boolean
+  ownsJid(jid: string): boolean
+  async disconnect(): Promise<void>
+}
+```
+
+### Key Features
 
 - **Reading messages**: Direct SQLite access to `~/Library/Messages/chat.db` (2-second polling)
 - **Sending messages**: Native AppleScript via Messages.app
@@ -15,7 +39,7 @@ This skill adds **native iMessage support** to NanoClaw by reading directly from
 - **No security compromises**: No Private API or SIP disabling required
 - **Isolated agents**: Each contact gets their own agent container
 - **Approval workflow**: New contacts require approval before chatting
-- **File watching**: Automatic `inotifywait` monitoring for instant collaboration (zero CPU when idle)
+- **Collaboration watching**: Host-level `fswatch` for instant multi-agent coordination (zero CPU when idle)
 
 ## Prerequisites
 
@@ -48,23 +72,18 @@ This provides native SQLite access to the Messages database.
 
 Before implementation, ask:
 
-1. **Replace WhatsApp?**: Do you want to replace WhatsApp entirely with iMessage?
-   - **Yes**: Set `IMESSAGE_ONLY=true` and skip WhatsApp connection
-   - **No**: Run both WhatsApp and iMessage simultaneously
-   - This affects how the main application starts and which channels are available
-
-2. **Auto-registration behavior**: How should new contacts be handled?
+1. **Auto-registration behavior**: How should new contacts be handled?
    - **Require approval (Recommended)**: New contacts require approval before chatting. Denied contacts are blocked.
    - **Auto-approve all**: Anyone can message immediately (less secure)
    - **Manual registration only**: Chats must be pre-registered
 
-3. **Collaboration folder**: Where should the shared workspace be created?
+2. **Collaboration folder**: Where should the shared workspace be created?
    - Default: `~/nanoclaw-collaboration/`
    - Custom path: User specifies absolute path
    - This folder allows different agents to collaborate on shared tasks
    - Note: Remember the path you choose - you'll need it in Step 3 and Step 6
 
-4. **Mount allowlist**: Should we add the collaboration folder to the mount allowlist?
+3. **Mount allowlist**: Should we add the collaboration folder to the mount allowlist?
    - Default: `~/.config/nanoclaw/mount-allowlist.json`
    - Add with read-write access for all agents
 
