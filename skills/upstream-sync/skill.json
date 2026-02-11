@@ -1,0 +1,8 @@
+{
+  "name": "upstream-sync",
+  "description": "Daily check and sync with upstream NanoClaw repository",
+  "version": "1.0.0",
+  "trigger": "daily",
+  "schedule": "0 3 * * *",
+  "instructions": "Check for upstream updates, rebase custom changes, resolve conflicts, test, and merge if successful"
+}
