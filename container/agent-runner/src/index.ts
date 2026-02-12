@@ -444,7 +444,7 @@ async function runQuery(
     prompt: stream,
     options: {
       cwd: '/workspace/group',
-      model: 'claude-opus-4-20250514',
+      model: 'claude-opus-4-6',
       resume: sessionId,
       resumeSessionAt: resumeAt,
       systemPrompt: globalClaudeMd
