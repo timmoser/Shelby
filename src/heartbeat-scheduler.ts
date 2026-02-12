@@ -175,6 +175,7 @@ export function initializeHeartbeat(
       schedule_type: scheduleType,
       schedule_value: scheduleValue,
       context_mode: 'group', // Use group context to maintain conversation continuity
+      model: 'haiku', // Heartbeats use cheap model for routine checks
       next_run: nextRun,
       status: 'active',
       created_at: new Date().toISOString(),

@@ -169,7 +169,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
+  const output = await runAgent(group, prompt, chatJid, 'claude-opus-4-6', async (result) => {
     // Streaming output callback — called for each agent result
     if (result.result) {
       const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
@@ -213,6 +213,7 @@ async function runAgent(
   group: RegisteredGroup,
   prompt: string,
   chatJid: string,
+  model: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.folder === MAIN_GROUP_FOLDER;
@@ -263,6 +264,7 @@ async function runAgent(
         groupFolder: group.folder,
         chatJid,
         isMain,
+        model,
       },
       (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
@@ -423,7 +425,7 @@ async function main(): Promise<void> {
         logger.info({ group: group.name, file: path.basename(event.path) }, 'Collaboration file changed');
         queue.enqueueTask(jid, `collab-file-${Date.now()}`, async () => {
           const prompt = `[A file was modified in your collaboration folder: ${path.basename(event.path)}]`;
-          await runAgent(group, prompt, jid, async (result) => {
+          await runAgent(group, prompt, jid, 'claude-opus-4-6', async (result) => {
             if (result.result) {
               const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
               const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();

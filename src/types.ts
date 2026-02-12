@@ -60,6 +60,7 @@ export interface ScheduledTask {
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
+  model?: string; // Claude model to use (default: haiku for scheduled tasks, opus-4-6 for messages)
   next_run: string | null;
   last_run: string | null;
   last_result: string | null;
