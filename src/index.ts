@@ -448,7 +448,6 @@ async function main(): Promise<void> {
     queue,
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage,
-    assistantName: ASSISTANT_NAME,
   });
 
   // Initialize heartbeats for groups that have heartbeat-config.json
@@ -463,8 +462,6 @@ async function main(): Promise<void> {
     },
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
-    approveIMessageContact: (chatJid) => approveIMessageContactHelper(chatJid, imessage, { registeredGroups: () => registeredGroups, registerGroup }),
-    denyIMessageContact: denyIMessageContactHelper,
   });
   queue.setProcessMessagesFn(processGroupMessages);
 

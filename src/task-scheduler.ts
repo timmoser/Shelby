@@ -19,6 +19,7 @@ import {
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
+import { isHeartbeatOk } from './heartbeat-scheduler.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
@@ -127,7 +128,8 @@ async function runTask(
           // Strip <internal>...</internal> blocks before sending to user
           const raw = typeof streamedOutput.result === 'string' ? streamedOutput.result : JSON.stringify(streamedOutput.result);
           const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-          if (text) {
+          // Only send if there's text AND it's not a suppressed HEARTBEAT_OK
+          if (text && !isHeartbeatOk(text)) {
             await deps.sendMessage(task.chat_jid, text);
           }
           // Only reset idle timer on actual results, not session-update markers
