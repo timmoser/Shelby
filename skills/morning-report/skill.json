@@ -1,0 +1,8 @@
+{
+  "name": "morning-report",
+  "description": "Generate daily morning briefing for Tim at 9 AM",
+  "version": "1.0.0",
+  "trigger": "daily",
+  "schedule": "0 9 * * *",
+  "instructions": "Create comprehensive morning briefing with overnight updates, project status, priorities, and blockers"
+}

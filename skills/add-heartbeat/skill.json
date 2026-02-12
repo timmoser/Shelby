@@ -1,0 +1,7 @@
+{
+  "name": "add-heartbeat",
+  "description": "Add OpenClaw-style heartbeat functionality to NanoClaw",
+  "version": "1.0.0",
+  "type": "enhancement",
+  "instructions": "Implement periodic autonomous agent turns (heartbeat) similar to OpenClaw"
+}

@@ -101,9 +101,41 @@
 - **Reason**: Reliable scheduled task execution
 - **Conflict Strategy**: Keep our fixes unless upstream has better solution
 
+### Heartbeat System
+- **Files**:
+  - `src/heartbeat-scheduler.ts`
+  - `src/ipc.ts` (suppression logic)
+  - `src/index.ts` (initialization)
+  - `groups/main/HEARTBEAT.md`
+  - `groups/main/heartbeat-config.json`
+- **Customization**: OpenClaw-style proactive monitoring system
+- **Reason**: Transform from reactive to proactive agent behavior
+- **Recent Commits**: 2026-02-12 - Initial heartbeat implementation
+- **Conflict Strategy**: Core custom feature - preserve entirely
+
 ---
 
 ## Sync History
+
+### 2026-02-12 - Heartbeat Feature Implementation
+- Implemented OpenClaw-style heartbeat functionality for proactive monitoring
+- Added heartbeat scheduler module (`src/heartbeat-scheduler.ts`)
+- Integrated HEARTBEAT_OK suppression in IPC message handler
+- Created heartbeat configuration system (`groups/*/heartbeat-config.json`)
+- Added automatic heartbeat initialization on startup
+- Files modified:
+  - `src/heartbeat-scheduler.ts` (new)
+  - `src/ipc.ts` (added suppression logic)
+  - `src/index.ts` (integrated initialization)
+  - `groups/main/HEARTBEAT.md` (new)
+  - `groups/main/heartbeat-config.json` (new)
+
+**Feature Details**:
+- Runs hourly during active hours (9 AM - 6 PM Pacific)
+- Reads HEARTBEAT.md checklist for standing instructions
+- Automatically suppresses HEARTBEAT_OK responses
+- Uses existing task scheduler infrastructure
+- Configurable interval and active hours per group
 
 ### 2026-02-11 - Initial Setup & Documentation
 - Forked repository from anthropics/nanoclaw

@@ -42,6 +42,7 @@ import { formatMessages } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { initializeAllHeartbeats } from './heartbeat-scheduler.js';
 
 // Re-export for backwards compatibility
 export { escapeXml, formatMessages } from './router.js';
@@ -551,6 +552,10 @@ async function main(): Promise<void> {
     sendMessage,
     assistantName: ASSISTANT_NAME,
   });
+
+  // Initialize heartbeats for groups that have heartbeat-config.json
+  initializeAllHeartbeats(registeredGroups);
+
   startIpcWatcher({
     sendMessage,
     registeredGroups: () => registeredGroups,

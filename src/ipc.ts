@@ -14,6 +14,7 @@ import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
+import { isHeartbeatOk } from './heartbeat-scheduler.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -79,14 +80,22 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   isMain ||
                   (targetGroup && targetGroup.folder === sourceGroup)
                 ) {
-                  await deps.sendMessage(
-                    data.chatJid,
-                    `${ASSISTANT_NAME}: ${data.text}`,
-                  );
-                  logger.info(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'IPC message sent',
-                  );
+                  // Check for HEARTBEAT_OK suppression
+                  if (isHeartbeatOk(data.text, 300)) {
+                    logger.info(
+                      { chatJid: data.chatJid, sourceGroup },
+                      'HEARTBEAT_OK message suppressed',
+                    );
+                  } else {
+                    await deps.sendMessage(
+                      data.chatJid,
+                      `${ASSISTANT_NAME}: ${data.text}`,
+                    );
+                    logger.info(
+                      { chatJid: data.chatJid, sourceGroup },
+                      'IPC message sent',
+                    );
+                  }
                 } else {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
