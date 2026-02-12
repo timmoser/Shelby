@@ -124,8 +124,12 @@ async function runTask(
       async (streamedOutput: ContainerOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
-          // Forward result to user (sendMessage handles formatting)
-          await deps.sendMessage(task.chat_jid, streamedOutput.result);
+          // Strip <internal>...</internal> blocks before sending to user
+          const raw = typeof streamedOutput.result === 'string' ? streamedOutput.result : JSON.stringify(streamedOutput.result);
+          const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          if (text) {
+            await deps.sendMessage(task.chat_jid, text);
+          }
           // Only reset idle timer on actual results, not session-update markers
           resetIdleTimer();
         }
