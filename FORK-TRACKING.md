@@ -117,6 +117,13 @@
 
 ## Sync History
 
+### 2026-02-12 - Model Upgrade to Opus 4.6
+- Switched from Claude Sonnet 4.5 to Claude Opus 4.6 for improved capabilities
+- Modified agent runner to use `claude-opus-4-20250514` model
+- Files modified:
+  - `container/agent-runner/src/index.ts` (added model parameter to query options)
+- **Rebuild required**: Run `cd container && ./build.sh` from host to rebuild container
+
 ### 2026-02-12 - Heartbeat Feature Implementation
 - Implemented OpenClaw-style heartbeat functionality for proactive monitoring
 - Added heartbeat scheduler module (`src/heartbeat-scheduler.ts`)

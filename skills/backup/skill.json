@@ -1,0 +1,8 @@
+{
+  "name": "backup",
+  "description": "Daily backup of critical NanoClaw data",
+  "version": "1.0.0",
+  "trigger": "daily",
+  "schedule": "0 4 * * *",
+  "instructions": "Backup databases, configs, and conversation history to timestamped archive"
+}
