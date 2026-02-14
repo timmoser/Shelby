@@ -4,5 +4,5 @@
   "version": "1.0.0",
   "trigger": "daily",
   "schedule": "0 3 * * *",
-  "instructions": "Check for upstream updates, rebase custom changes, resolve conflicts, test, and merge if successful"
+  "instructions": "Check for upstream updates, cherry-pick relevant commits, resolve conflicts, validate with build and tests, report results"
 }

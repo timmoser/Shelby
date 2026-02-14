@@ -165,7 +165,7 @@
 
 ## Conflict Resolution Principles
 
-1. **Preserve Custom Features**: Our WhatsApp integration, skills system, and collaboration features are core to our use case
+1. **Preserve Custom Features**: Our iMessage integration, skills system, and collaboration features are core to our use case
 2. **Adopt Improvements**: Take upstream bug fixes and performance improvements
 3. **Refactor When Beneficial**: If upstream introduces better patterns, adapt our code
 4. **Document Decisions**: Every conflict resolution should be documented here
@@ -178,7 +178,7 @@
 Before completing any upstream sync, verify:
 
 - [ ] Skills load correctly (`ls /workspace/project/skills/`)
-- [ ] WhatsApp integration works (check message handling)
+- [ ] iMessage integration works (check message handling)
 - [ ] Agent collaboration features work (file watching, messaging)
 - [ ] Custom commands/features still functional
 - [ ] No breaking changes to APIs we depend on
