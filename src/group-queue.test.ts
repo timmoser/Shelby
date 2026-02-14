@@ -98,7 +98,7 @@ describe('GroupQueue', () => {
     expect(processMessages).toHaveBeenCalledTimes(3);
   });
 
-  // --- Tasks prioritized over messages ---
+  // --- Tasks prioritized over messages (upstream behavior) ---
 
   it('drains tasks before messages for same group', async () => {
     const executionOrder: string[] = [];
@@ -132,10 +132,9 @@ describe('GroupQueue', () => {
     resolveFirst!();
     await vi.advanceTimersByTimeAsync(10);
 
-    // Task should have run before the second message check
-    expect(executionOrder[0]).toBe('messages'); // first call
-    expect(executionOrder[1]).toBe('task'); // task runs first in drain
-    // Messages would run after task completes
+    // Tasks drain before messages (they won't be re-discovered from SQLite)
+    expect(executionOrder[0]).toBe('messages'); // first call (was already running)
+    expect(executionOrder[1]).toBe('task'); // task drains first
   });
 
   // --- Retry with backoff on failure ---

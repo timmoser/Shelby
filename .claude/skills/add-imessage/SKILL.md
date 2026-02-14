@@ -81,7 +81,7 @@ Before implementation, ask:
    - Default: `~/nanoclaw-collaboration/`
    - Custom path: User specifies absolute path
    - This folder allows different agents to collaborate on shared tasks
-   - Note: Remember the path you choose - you'll need it in Step 3 and Step 6
+   - Note: Remember the path you choose - you'll need it in Step 3 and Step 7
 
 3. **Mount allowlist**: Should we add the collaboration folder to the mount allowlist?
    - Default: `~/.config/nanoclaw/mount-allowlist.json`
@@ -506,7 +506,75 @@ async function setTyping(jid: string, isTyping: boolean): Promise<void> {
 }
 ```
 
-4. **Update main() function**:
+4. **Add `deliverToActiveContainer()` function** (IPC delivery for follow-up messages):
+
+The upstream WhatsApp codebase uses `startMessageLoop()` which polls for messages and tries `queue.sendMessage()` before falling back to `queue.enqueueMessageCheck()`. Since iMessage uses an event-driven `onMessage` callback instead of a polling loop, we need an equivalent function that attempts IPC delivery to an active container:
+
+```typescript
+/**
+ * Try to deliver pending messages to an already-running container via IPC.
+ * Matches the upstream startMessageLoop pattern: try queue.sendMessage() first,
+ * return true if delivered, false if no active container.
+ */
+function deliverToActiveContainer(chatJid: string): boolean {
+  const group = registeredGroups[chatJid];
+  if (!group) return false;
+
+  const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
+  const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
+  const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+
+  if (missedMessages.length === 0) return false;
+
+  // For non-main groups, check trigger requirement
+  if (!isMainGroup && group.requiresTrigger !== false) {
+    const hasTrigger = missedMessages.some((m) =>
+      TRIGGER_PATTERN.test(m.content.trim()),
+    );
+    if (!hasTrigger) return false;
+  }
+
+  const prompt = formatMessages(missedMessages);
+  const delivered = queue.sendMessage(chatJid, prompt);
+
+  if (delivered) {
+    // Advance cursor so these messages aren't re-processed
+    lastAgentTimestamp[chatJid] =
+      missedMessages[missedMessages.length - 1].timestamp;
+    saveState();
+    logger.info(
+      { group: group.name, messageCount: missedMessages.length },
+      'Delivered messages to active container via IPC',
+    );
+    // Reset idle timer so the container stays alive for the follow-up
+    const timer = activeIdleTimers.get(chatJid);
+    if (timer) {
+      timer.reset();
+    }
+    // Send a "thinking..." indicator so the user knows the bot received their message
+    sendMessage(chatJid, 'thinking...').catch(() => {});
+  }
+
+  return delivered;
+}
+```
+
+Also add a module-level `activeIdleTimers` map and register idle timers in `processGroupMessages`:
+
+```typescript
+const activeIdleTimers = new Map<string, { reset: () => void; clear: () => void }>();
+```
+
+In `processGroupMessages`, after creating the idle timer, register it:
+```typescript
+activeIdleTimers.set(chatJid, {
+  reset: resetIdleTimer,
+  clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+});
+```
+And clean up when done: `activeIdleTimers.delete(chatJid);`
+
+5. **Update main() function**:
 
 ```typescript
 async function main(): Promise<void> {
@@ -550,7 +618,22 @@ async function main(): Promise<void> {
 }
 ```
 
-5. **Add IPC handlers** for approval workflow (in the IPC switch statement):
+**IMPORTANT**: In the `onMessage` callback for iMessage, match the upstream `startMessageLoop` pattern by trying IPC delivery first:
+
+```typescript
+onMessage: (chatJid, msg) => {
+  // Match upstream startMessageLoop pattern: try IPC delivery first,
+  // fall back to enqueueMessageCheck if no active container
+  if (deliverToActiveContainer(chatJid)) {
+    return;
+  }
+  queue.enqueueMessageCheck(chatJid);
+},
+```
+
+This is critical — without it, follow-up messages while a container is running won't be delivered until the container exits. The upstream WhatsApp codebase handles this in `startMessageLoop()` but iMessage's event-driven callback needs it explicitly.
+
+6. **Add IPC handlers** for approval workflow (in the IPC switch statement):
 
 ```typescript
 case 'approve_imessage_contact':
@@ -590,13 +673,13 @@ case 'deny_imessage_contact':
   break;
 ```
 
-6. **Update getAvailableGroups**:
+7. **Update getAvailableGroups**:
 
 ```typescript
 .filter((c) => c.jid !== '__group_sync__' && (c.jid.endsWith('@g.us') || c.jid.startsWith('tg:') || c.jid.startsWith('imsg:')))
 ```
 
-### Step 5: Create Collaboration Folder
+### Step 6: Create Collaboration Folder
 
 Use the path chosen in the questions (default: `~/nanoclaw-collaboration`):
 
@@ -618,7 +701,7 @@ Each iMessage contact gets their own isolated agent, but this folder allows them
 EOF
 ```
 
-### Step 6: Update Mount Allowlist
+### Step 7: Update Mount Allowlist
 
 Edit `~/.config/nanoclaw/mount-allowlist.json`. Add the collaboration folder with the absolute path (use the path from your questions, e.g., if you chose `~/nanoclaw-collaboration`, expand it to `/Users/yourname/nanoclaw-collaboration`):
 
@@ -638,7 +721,7 @@ Edit `~/.config/nanoclaw/mount-allowlist.json`. Add the collaboration folder wit
 
 **Note**: Replace `/Users/yourname/nanoclaw-collaboration` with your actual absolute path. Run `echo ~/nanoclaw-collaboration` to get it.
 
-### Step 7: Build and Restart
+### Step 8: Build and Restart
 
 ```bash
 npm run build
@@ -646,7 +729,7 @@ launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
-### Step 8: Test and Approve Contacts
+### Step 9: Test and Approve Contacts
 
 1. **Send a test iMessage** to yourself from another device
 2. **Check logs** for pending approval notification:

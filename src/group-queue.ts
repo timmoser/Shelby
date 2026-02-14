@@ -245,14 +245,13 @@ export class GroupQueue {
 
     const state = this.getGroup(groupJid);
 
-    // Tasks first (they won't be re-discovered from SQLite like messages)
+    // Tasks first — they won't be re-discovered from SQLite like messages will
     if (state.pendingTasks.length > 0) {
       const task = state.pendingTasks.shift()!;
       this.runTask(groupJid, task);
       return;
     }
 
-    // Then pending messages
     if (state.pendingMessages) {
       this.runForGroup(groupJid, 'drain');
       return;
@@ -270,7 +269,6 @@ export class GroupQueue {
       const nextJid = this.waitingGroups.shift()!;
       const state = this.getGroup(nextJid);
 
-      // Prioritize tasks over messages
       if (state.pendingTasks.length > 0) {
         const task = state.pendingTasks.shift()!;
         this.runTask(nextJid, task);

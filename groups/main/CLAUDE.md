@@ -199,6 +199,21 @@ Read `/workspace/project/data/registered_groups.json` and format it nicely.
 
 ---
 
+## Deliverables & File Sharing
+
+*IMPORTANT*: Always save deliverables, research, strategies, and any files Tim needs to see to the shared iCloud folder at `/workspace/extra/icloud/`. Use the appropriate project subfolder:
+
+- `/workspace/extra/icloud/studio-moser/` — Studio Moser website project
+- `/workspace/extra/icloud/ausra-photos/` — Ausra Photos project
+- `/workspace/extra/icloud/shopify-store/` — Shopify store project
+- `/workspace/extra/icloud/ebook-reader/` — Ebook reader project
+- `/workspace/extra/icloud/dawn-job-hunt/` — Dawn's job search & projects
+- `/workspace/extra/icloud/dawnmoser-com/` — dawnmoser.com website
+
+Local workspace (`/workspace/group/research/`) is for working drafts only. Final deliverables go to iCloud.
+
+---
+
 ## Global Memory
 
 You can read and write to `/workspace/project/groups/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.

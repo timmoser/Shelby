@@ -50,6 +50,7 @@ export { escapeXml, formatMessages } from './router.js';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
+const activeIdleTimers = new Map<string, { reset: () => void; clear: () => void }>();
 
 let imessage: IMessageChannel;
 const queue = new GroupQueue();
@@ -165,6 +166,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
+  // Register idle timer so follow-up messages can reset it
+  activeIdleTimers.set(chatJid, {
+    reset: resetIdleTimer,
+    clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+  });
+
   await setTyping(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
@@ -191,6 +198,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
+  activeIdleTimers.delete(chatJid);
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
@@ -207,6 +215,54 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   return true;
+}
+
+/**
+ * Try to deliver pending messages to an already-running container via IPC.
+ * Matches the upstream startMessageLoop pattern: try queue.sendMessage() first,
+ * return true if delivered, false if no active container.
+ */
+function deliverToActiveContainer(chatJid: string): boolean {
+  const group = registeredGroups[chatJid];
+  if (!group) return false;
+
+  const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
+  const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
+  const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+
+  if (missedMessages.length === 0) return false;
+
+  // For non-main groups, check trigger requirement
+  if (!isMainGroup && group.requiresTrigger !== false) {
+    const hasTrigger = missedMessages.some((m) =>
+      TRIGGER_PATTERN.test(m.content.trim()),
+    );
+    if (!hasTrigger) return false;
+  }
+
+  const prompt = formatMessages(missedMessages);
+  const delivered = queue.sendMessage(chatJid, prompt);
+
+  if (delivered) {
+    // Advance cursor so these messages aren't re-processed
+    lastAgentTimestamp[chatJid] =
+      missedMessages[missedMessages.length - 1].timestamp;
+    saveState();
+    logger.info(
+      { group: group.name, messageCount: missedMessages.length },
+      'Delivered messages to active container via IPC',
+    );
+    // Reset idle timer so the container stays alive for the follow-up
+    const timer = activeIdleTimers.get(chatJid);
+    if (timer) {
+      timer.reset();
+      logger.debug({ chatJid }, 'Idle timer reset due to new user message');
+    }
+    // Send a "thinking..." indicator so the user knows the bot received their message
+    sendMessage(chatJid, 'thinking...').catch(() => {});
+  }
+
+  return delivered;
 }
 
 async function runAgent(
@@ -379,6 +435,11 @@ async function main(): Promise<void> {
   // Create iMessage channel
   imessage = new IMessageChannel({
     onMessage: (chatJid, msg) => {
+      // Match upstream startMessageLoop pattern: try IPC delivery first,
+      // fall back to enqueueMessageCheck if no active container
+      if (deliverToActiveContainer(chatJid)) {
+        return;
+      }
       queue.enqueueMessageCheck(chatJid);
     },
     onApprovalRequest: async (chatJid, contactInfo, firstMessage) => {
@@ -448,6 +509,8 @@ async function main(): Promise<void> {
     queue,
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage,
+    registerIdleTimer: (chatJid, timer) => activeIdleTimers.set(chatJid, timer),
+    unregisterIdleTimer: (chatJid) => activeIdleTimers.delete(chatJid),
   });
 
   // Initialize heartbeats for groups that have heartbeat-config.json

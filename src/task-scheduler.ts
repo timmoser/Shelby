@@ -29,6 +29,8 @@ export interface SchedulerDependencies {
   queue: GroupQueue;
   onProcess: (groupJid: string, proc: ChildProcess, containerName: string, groupFolder: string) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
+  registerIdleTimer?: (chatJid: string, timer: { reset: () => void; clear: () => void }) => void;
+  unregisterIdleTimer?: (chatJid: string) => void;
 }
 
 async function runTask(
@@ -109,6 +111,12 @@ async function runTask(
     }, IDLE_TIMEOUT);
   };
 
+  // Register idle timer so user messages can reset it
+  deps.registerIdleTimer?.(task.chat_jid, {
+    reset: resetIdleTimer,
+    clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+  });
+
   try {
     const output = await runContainerAgent(
       group,
@@ -142,6 +150,7 @@ async function runTask(
     );
 
     if (idleTimer) clearTimeout(idleTimer);
+    deps.unregisterIdleTimer?.(task.chat_jid);
 
     if (output.status === 'error') {
       error = output.error || 'Unknown error';
@@ -156,6 +165,7 @@ async function runTask(
     );
   } catch (err) {
     if (idleTimer) clearTimeout(idleTimer);
+    deps.unregisterIdleTimer?.(task.chat_jid);
     error = err instanceof Error ? err.message : String(err);
     logger.error({ taskId: task.id, error }, 'Task failed');
   }
