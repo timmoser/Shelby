@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { GROUPS_DIR, MAIN_GROUP_FOLDER, TIMEZONE } from './config.js';
-import { createTask } from './db.js';
+import { createTask, getTaskById } from './db.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
@@ -33,7 +33,9 @@ export interface HeartbeatConfig {
 function parseInterval(interval: string): number {
   const match = interval.match(/^(\d+)([mh])$/);
   if (!match) {
-    throw new Error(`Invalid interval format: ${interval}. Use format like "60m" or "2h"`);
+    throw new Error(
+      `Invalid interval format: ${interval}. Use format like "60m" or "2h"`,
+    );
   }
 
   const value = parseInt(match[1], 10);
@@ -64,7 +66,9 @@ function generateHeartbeatCron(intervalMs: number): string {
     return `*/${minutes} * * * *`;
   } else {
     // Fallback: use interval mode instead
-    throw new Error(`Interval ${minutes}m cannot be expressed as cron (use 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, or 60 minutes)`);
+    throw new Error(
+      `Interval ${minutes}m cannot be expressed as cron (use 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, or 60 minutes)`,
+    );
   }
 }
 
@@ -72,7 +76,11 @@ function generateHeartbeatCron(intervalMs: number): string {
  * Load heartbeat configuration from group folder
  */
 function loadHeartbeatConfig(groupFolder: string): HeartbeatConfig | null {
-  const configPath = path.join(GROUPS_DIR, groupFolder, 'heartbeat-config.json');
+  const configPath = path.join(
+    GROUPS_DIR,
+    groupFolder,
+    'heartbeat-config.json',
+  );
 
   if (!fs.existsSync(configPath)) {
     logger.debug({ groupFolder }, 'No heartbeat config found');
@@ -98,7 +106,10 @@ function loadHeartbeatConfig(groupFolder: string): HeartbeatConfig | null {
 /**
  * Create active hours check wrapper for heartbeat prompt
  */
-function wrapPromptWithActiveHoursCheck(config: HeartbeatConfig, basePrompt: string): string {
+function wrapPromptWithActiveHoursCheck(
+  config: HeartbeatConfig,
+  basePrompt: string,
+): string {
   if (!config.activeHours) {
     return basePrompt;
   }
@@ -117,7 +128,7 @@ ${basePrompt}`;
 export function initializeHeartbeat(
   groupFolder: string,
   chatJid: string,
-  registeredGroup: RegisteredGroup
+  registeredGroup: RegisteredGroup,
 ): boolean {
   const config = loadHeartbeatConfig(groupFolder);
 
@@ -131,7 +142,9 @@ export function initializeHeartbeat(
     const intervalMs = parseInterval(config.every);
 
     // Build heartbeat prompt
-    const basePrompt = config.prompt || 'Read HEARTBEAT.md and follow the instructions. If nothing needs attention, respond with HEARTBEAT_OK.';
+    const basePrompt =
+      config.prompt ||
+      'Read HEARTBEAT.md and follow the instructions. If nothing needs attention, respond with HEARTBEAT_OK.';
     const prompt = wrapPromptWithActiveHoursCheck(config, basePrompt);
 
     // Try to use cron for standard intervals, fall back to interval mode
@@ -141,12 +154,18 @@ export function initializeHeartbeat(
     try {
       scheduleValue = generateHeartbeatCron(intervalMs);
       scheduleType = 'cron';
-      logger.info({ groupFolder, cron: scheduleValue }, 'Using cron schedule for heartbeat');
+      logger.info(
+        { groupFolder, cron: scheduleValue },
+        'Using cron schedule for heartbeat',
+      );
     } catch {
       // Fall back to interval mode
       scheduleValue = intervalMs.toString();
       scheduleType = 'interval';
-      logger.info({ groupFolder, intervalMs }, 'Using interval schedule for heartbeat');
+      logger.info(
+        { groupFolder, intervalMs },
+        'Using interval schedule for heartbeat',
+      );
     }
 
     // Create the scheduled task
@@ -163,9 +182,14 @@ export function initializeHeartbeat(
       nextRun = new Date(Date.now() + intervalMs).toISOString();
     }
 
-    // Check if task already exists by trying to get it
-    // Note: We don't have a direct getTaskByFilter, so we'll just create with unique ID
-    // The scheduler will handle duplicate prevention via primary key constraint
+    // Skip if task already exists (e.g. service restart)
+    if (getTaskById(taskId)) {
+      logger.info(
+        { groupFolder, taskId },
+        'Heartbeat task already exists, skipping creation',
+      );
+      return true;
+    }
 
     createTask({
       id: taskId,
@@ -187,9 +211,9 @@ export function initializeHeartbeat(
         taskId,
         scheduleType,
         scheduleValue,
-        activeHours: config.activeHours
+        activeHours: config.activeHours,
       },
-      'Heartbeat initialized'
+      'Heartbeat initialized',
     );
 
     return true;
@@ -202,7 +226,10 @@ export function initializeHeartbeat(
 /**
  * Check if a message is a HEARTBEAT_OK response that should be suppressed
  */
-export function isHeartbeatOk(message: string, maxChars: number = 300): boolean {
+export function isHeartbeatOk(
+  message: string,
+  maxChars: number = 300,
+): boolean {
   const content = message.trim();
 
   // Check if message contains HEARTBEAT_OK
@@ -220,11 +247,17 @@ export function isHeartbeatOk(message: string, maxChars: number = 300): boolean 
 
   // Suppress if remaining content is minimal
   if (remaining.length <= maxChars) {
-    logger.debug({ messageLength: content.length, remainingLength: remaining.length }, 'Suppressing HEARTBEAT_OK message');
+    logger.debug(
+      { messageLength: content.length, remainingLength: remaining.length },
+      'Suppressing HEARTBEAT_OK message',
+    );
     return true;
   }
 
-  logger.debug({ remainingLength: remaining.length, maxChars }, 'HEARTBEAT_OK found but message has substantial content, not suppressing');
+  logger.debug(
+    { remainingLength: remaining.length, maxChars },
+    'HEARTBEAT_OK found but message has substantial content, not suppressing',
+  );
   return false;
 }
 
@@ -232,7 +265,7 @@ export function isHeartbeatOk(message: string, maxChars: number = 300): boolean 
  * Initialize heartbeat for all registered groups that have heartbeat-config.json
  */
 export function initializeAllHeartbeats(
-  registeredGroups: Record<string, RegisteredGroup>
+  registeredGroups: Record<string, RegisteredGroup>,
 ): void {
   logger.info('Initializing heartbeats for all groups');
 
@@ -247,6 +280,8 @@ export function initializeAllHeartbeats(
   if (initializedCount > 0) {
     logger.info({ count: initializedCount }, 'Heartbeats initialized');
   } else {
-    logger.debug('No heartbeats initialized (no groups have heartbeat-config.json with enabled: true)');
+    logger.debug(
+      'No heartbeats initialized (no groups have heartbeat-config.json with enabled: true)',
+    );
   }
 }
