@@ -4,10 +4,7 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 
-import {
-  ASSISTANT_NAME,
-  POLL_INTERVAL,
-} from '../config.js';
+import { ASSISTANT_NAME, POLL_INTERVAL } from '../config.js';
 import {
   addPendingApproval,
   getPendingApproval,
@@ -16,18 +13,11 @@ import {
   storeMessageDirect,
 } from '../db.js';
 import { logger } from '../logger.js';
-import {
-  Channel,
-  OnInboundMessage,
-  RegisteredGroup,
-} from '../types.js';
+import { Channel, OnInboundMessage, RegisteredGroup } from '../types.js';
 
 const execPromise = promisify(exec);
 
-const MESSAGES_DB_PATH = path.join(
-  os.homedir(),
-  'Library/Messages/chat.db',
-);
+const MESSAGES_DB_PATH = path.join(os.homedir(), 'Library/Messages/chat.db');
 
 interface MessageRow {
   ROWID: number;
@@ -42,7 +32,11 @@ interface MessageRow {
 
 export interface IMessageChannelOpts {
   onMessage: OnInboundMessage;
-  onApprovalRequest?: (chatJid: string, contactInfo: string, firstMessage: string | null) => Promise<void>;
+  onApprovalRequest?: (
+    chatJid: string,
+    contactInfo: string,
+    firstMessage: string | null,
+  ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
 }
@@ -69,26 +63,40 @@ export class IMessageChannel implements Channel {
     // Initialize last processed row ID
     try {
       const db = new Database(MESSAGES_DB_PATH, { readonly: true });
-      const result = db.prepare('SELECT MAX(ROWID) as maxId FROM message').get() as { maxId: number };
+      const result = db
+        .prepare('SELECT MAX(ROWID) as maxId FROM message')
+        .get() as { maxId: number };
       this.lastProcessedRowId = result.maxId || 0;
       db.close();
-      logger.info({ lastProcessedRowId: this.lastProcessedRowId }, 'Initialized with current max message ID');
+      logger.info(
+        { lastProcessedRowId: this.lastProcessedRowId },
+        'Initialized with current max message ID',
+      );
     } catch (err) {
       logger.error({ err }, 'Failed to initialize iMessage last processed ID');
       throw err;
     }
 
     // Start polling
-    this.pollingInterval = setInterval(() => this.pollMessages(), POLL_INTERVAL);
+    this.pollingInterval = setInterval(
+      () => this.pollMessages(),
+      POLL_INTERVAL,
+    );
     this.connected = true;
 
-    logger.info({ interval: `${POLL_INTERVAL / 1000}s` }, 'iMessage database polling started');
+    logger.info(
+      { interval: `${POLL_INTERVAL / 1000}s` },
+      'iMessage database polling started',
+    );
   }
 
   private async pollMessages(): Promise<void> {
     let db: Database.Database | null = null;
     try {
-      logger.info({ lastProcessedRowId: this.lastProcessedRowId }, 'Querying for new messages');
+      logger.info(
+        { lastProcessedRowId: this.lastProcessedRowId },
+        'Querying for new messages',
+      );
 
       // Open fresh connection each time to avoid lock issues
       db = new Database(MESSAGES_DB_PATH, { readonly: true });
@@ -116,7 +124,10 @@ export class IMessageChannel implements Channel {
       const stmt = db.prepare(query);
       const messages = stmt.all(this.lastProcessedRowId) as MessageRow[];
 
-      logger.info({ count: messages.length, lastProcessedRowId: this.lastProcessedRowId }, 'Query completed');
+      logger.info(
+        { count: messages.length, lastProcessedRowId: this.lastProcessedRowId },
+        'Query completed',
+      );
 
       for (const msg of messages) {
         await this.processMessage(msg);
@@ -144,7 +155,10 @@ export class IMessageChannel implements Channel {
 
     // Skip non-iMessage
     if (msg.service !== 'iMessage') {
-      logger.debug({ guid: msg.guid, service: msg.service }, 'Skipping non-iMessage');
+      logger.debug(
+        { guid: msg.guid, service: msg.service },
+        'Skipping non-iMessage',
+      );
       return;
     }
 
@@ -157,7 +171,10 @@ export class IMessageChannel implements Channel {
     const appleEpoch = new Date('2001-01-01T00:00:00Z').getTime();
     const timestamp = new Date(appleEpoch + msg.date / 1_000_000).toISOString();
 
-    logger.info({ chatJid, sender, text: text.slice(0, 50) }, 'iMessage received');
+    logger.info(
+      { chatJid, sender, text: text.slice(0, 50) },
+      'iMessage received',
+    );
 
     // Store chat metadata
     storeChatMetadata(chatJid, timestamp, chatId);
@@ -176,7 +193,10 @@ export class IMessageChannel implements Channel {
       // Check if already pending approval
       const pending = getPendingApproval(chatJid);
       if (!pending) {
-        logger.info({ chatJid, sender }, 'New iMessage contact, adding to pending approvals');
+        logger.info(
+          { chatJid, sender },
+          'New iMessage contact, adding to pending approvals',
+        );
         addPendingApproval(chatJid, chatId, text);
 
         if (this.opts.onApprovalRequest) {
@@ -297,7 +317,10 @@ export async function approveIMessageContact(
 
   removePendingApproval(chatJid);
 
-  await channel.sendMessage(chatJid, `✓ Connected! I'm your personal assistant. How can I help?`);
+  await channel.sendMessage(
+    chatJid,
+    `✓ Connected! I'm your personal assistant. How can I help?`,
+  );
 
   logger.info({ chatJid, folder }, 'iMessage contact approved and registered');
 }

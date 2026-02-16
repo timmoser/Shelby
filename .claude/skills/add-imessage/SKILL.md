@@ -22,12 +22,12 @@ export class IMessageChannel implements Channel {
   name = 'imessage';
   prefixAssistantName = false; // iMessage shows as you, not as a bot
 
-  async connect(): Promise<void>
-  async sendMessage(jid: string, text: string): Promise<void>
-  async setTyping(jid: string, isTyping: boolean): Promise<void>
-  isConnected(): boolean
-  ownsJid(jid: string): boolean
-  async disconnect(): Promise<void>
+  async connect(): Promise<void>;
+  async sendMessage(jid: string, text: string): Promise<void>;
+  async setTyping(jid: string, isTyping: boolean): Promise<void>;
+  isConnected(): boolean;
+  ownsJid(jid: string): boolean;
+  async disconnect(): Promise<void>;
 }
 ```
 
@@ -103,6 +103,7 @@ export const IMESSAGE_COLLABORATION_FOLDER =
 Note: We no longer need `IMESSAGE_SERVER_URL`, `IMESSAGE_PASSWORD`, or `IMESSAGE_WEBHOOK_PORT` since we're using direct database access.
 
 **Optional**: If user chose a custom collaboration folder in the questions, add it to `.env`:
+
 ```bash
 # In .env file
 IMESSAGE_COLLABORATION_FOLDER=/path/to/custom/folder
@@ -135,14 +136,20 @@ db.exec(`
 Add helper functions for managing approvals:
 
 ```typescript
-export function addPendingApproval(chatJid: string, contactInfo: string, firstMessage: string): void {
+export function addPendingApproval(
+  chatJid: string,
+  contactInfo: string,
+  firstMessage: string,
+): void {
   db.prepare(
-    'INSERT OR REPLACE INTO pending_imessage_approvals (chat_jid, contact_info, first_message, requested_at) VALUES (?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO pending_imessage_approvals (chat_jid, contact_info, first_message, requested_at) VALUES (?, ?, ?, ?)',
   ).run(chatJid, contactInfo, firstMessage, new Date().toISOString());
 }
 
 export function getPendingApproval(chatJid: string) {
-  return db.prepare('SELECT * FROM pending_imessage_approvals WHERE chat_jid = ?').get(chatJid);
+  return db
+    .prepare('SELECT * FROM pending_imessage_approvals WHERE chat_jid = ?')
+    .get(chatJid);
 }
 
 export function getPendingApprovals() {
@@ -150,17 +157,25 @@ export function getPendingApprovals() {
 }
 
 export function removePendingApproval(chatJid: string): void {
-  db.prepare('DELETE FROM pending_imessage_approvals WHERE chat_jid = ?').run(chatJid);
+  db.prepare('DELETE FROM pending_imessage_approvals WHERE chat_jid = ?').run(
+    chatJid,
+  );
 }
 
-export function addBlockedContact(chatJid: string, contactInfo: string, reason: string): void {
+export function addBlockedContact(
+  chatJid: string,
+  contactInfo: string,
+  reason: string,
+): void {
   db.prepare(
-    'INSERT OR REPLACE INTO blocked_imessage_contacts (chat_jid, contact_info, blocked_at, reason) VALUES (?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO blocked_imessage_contacts (chat_jid, contact_info, blocked_at, reason) VALUES (?, ?, ?, ?)',
   ).run(chatJid, contactInfo, new Date().toISOString(), reason);
 }
 
 export function isContactBlocked(chatJid: string): boolean {
-  const row = db.prepare('SELECT 1 FROM blocked_imessage_contacts WHERE chat_jid = ?').get(chatJid);
+  const row = db
+    .prepare('SELECT 1 FROM blocked_imessage_contacts WHERE chat_jid = ?')
+    .get(chatJid);
   return !!row;
 }
 
@@ -240,7 +255,10 @@ function getNewMessages(): MessageRow[] {
 
     return db.prepare(query).all(lastProcessedRowId) as MessageRow[];
   } catch (err) {
-    logger.error({ err, lastProcessedRowId }, 'Error querying Messages database');
+    logger.error(
+      { err, lastProcessedRowId },
+      'Error querying Messages database',
+    );
     return [];
   } finally {
     if (db) db.close();
@@ -278,7 +296,9 @@ function handleIncomingMessage(message: MessageRow): void {
 
   let content = messageText;
   if (!TRIGGER_PATTERN.test(content)) {
-    const wasMentioned = content.toLowerCase().includes(ASSISTANT_NAME.toLowerCase());
+    const wasMentioned = content
+      .toLowerCase()
+      .includes(ASSISTANT_NAME.toLowerCase());
     if (wasMentioned && group.requiresTrigger !== false) {
       content = `@${ASSISTANT_NAME} ${content}`;
     }
@@ -294,10 +314,17 @@ function handleIncomingMessage(message: MessageRow): void {
     is_from_me: false,
   });
 
-  logger.info({ chatGuid, sender, rowId: message.ROWID }, 'iMessage stored from database');
+  logger.info(
+    { chatGuid, sender, rowId: message.ROWID },
+    'iMessage stored from database',
+  );
 }
 
-function notifyPendingApproval(chatGuid: string, senderName: string, firstMessage: string): void {
+function notifyPendingApproval(
+  chatGuid: string,
+  senderName: string,
+  firstMessage: string,
+): void {
   try {
     const ipcDir = path.join(DATA_DIR, 'ipc', MAIN_GROUP_FOLDER, 'input');
     fs.mkdirSync(ipcDir, { recursive: true });
@@ -334,10 +361,15 @@ function initializeLastProcessedRowId(): void {
   let db: Database.Database | null = null;
   try {
     db = new Database(MESSAGES_DB_PATH, { readonly: true });
-    const result = db.prepare('SELECT MAX(ROWID) as maxId FROM message WHERE service = ?').get('iMessage') as { maxId: number | null };
+    const result = db
+      .prepare('SELECT MAX(ROWID) as maxId FROM message WHERE service = ?')
+      .get('iMessage') as { maxId: number | null };
     if (result?.maxId) {
       lastProcessedRowId = result.maxId;
-      logger.info({ lastProcessedRowId }, 'Initialized with current max message ID');
+      logger.info(
+        { lastProcessedRowId },
+        'Initialized with current max message ID',
+      );
     }
   } catch (err) {
     logger.error({ err }, 'Error initializing last processed row ID');
@@ -353,12 +385,19 @@ export async function connectIMessage(): Promise<void> {
   logger.info({ interval: '2s' }, 'iMessage database polling started');
 }
 
-export async function sendIMessage(chatGuid: string, text: string): Promise<void> {
+export async function sendIMessage(
+  chatGuid: string,
+  text: string,
+): Promise<void> {
   try {
     const contactId = chatGuid.replace(/^imsg:/, '');
     const tmpFile = `/tmp/imessage-${Date.now()}.scpt`;
-    const escapedText = text.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"');
-    const escapedContact = contactId.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"');
+    const escapedText = text
+      .replace(/\\\\/g, '\\\\\\\\')
+      .replace(/"/g, '\\\\"');
+    const escapedContact = contactId
+      .replace(/\\\\/g, '\\\\\\\\')
+      .replace(/"/g, '\\\\"');
 
     const script = `tell application "Messages"
   set targetService to 1st account whose service type = iMessage
@@ -369,7 +408,10 @@ end tell`;
     fs.writeFileSync(tmpFile, script, 'utf-8');
     await execPromise(`osascript "${tmpFile}"`);
     fs.unlinkSync(tmpFile);
-    logger.info({ chatGuid, contactId, length: text.length }, 'iMessage sent via AppleScript');
+    logger.info(
+      { chatGuid, contactId, length: text.length },
+      'iMessage sent via AppleScript',
+    );
   } catch (err) {
     logger.error({ chatGuid, err }, 'Error sending iMessage via AppleScript');
   }
@@ -408,18 +450,22 @@ export async function approveIMessageContact(
     if (!pending) return { success: false, error: 'No pending approval found' };
 
     const registeredGroups = getAllRegisteredGroups();
-    if (registeredGroups[chatGuid]) return { success: false, error: 'Already registered' };
+    if (registeredGroups[chatGuid])
+      return { success: false, error: 'Already registered' };
 
     let folderName: string;
     if (useMainAgent) {
       folderName = MAIN_GROUP_FOLDER;
     } else {
-      const sanitizedName = pending.contact_info.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+      const sanitizedName = pending.contact_info
+        .replace(/[^a-zA-Z0-9-]/g, '-')
+        .toLowerCase();
       folderName = `imessage-${sanitizedName}-${Date.now()}`;
     }
 
     // Get collaboration folder from environment or use default
-    const collaborationFolder = process.env.IMESSAGE_COLLABORATION_FOLDER ||
+    const collaborationFolder =
+      process.env.IMESSAGE_COLLABORATION_FOLDER ||
       path.join(os.homedir(), 'nanoclaw-collaboration');
 
     registerGroup(chatGuid, {
@@ -428,24 +474,32 @@ export async function approveIMessageContact(
       trigger: `@${ASSISTANT_NAME}`,
       added_at: new Date().toISOString(),
       requiresTrigger: false,
-      containerConfig: useMainAgent ? undefined : {
-        additionalMounts: [
-          {
-            hostPath: collaborationFolder,
-            containerPath: 'collaboration',
-            readonly: false,
+      containerConfig: useMainAgent
+        ? undefined
+        : {
+            additionalMounts: [
+              {
+                hostPath: collaborationFolder,
+                containerPath: 'collaboration',
+                readonly: false,
+              },
+            ],
           },
-        ],
-      },
     });
 
     removePendingApproval(chatGuid);
     const mode = useMainAgent ? 'main agent' : 'isolated agent';
-    logger.info({ chatGuid, folder: folderName, contact: pending.contact_info, mode }, 'iMessage contact approved and registered');
+    logger.info(
+      { chatGuid, folder: folderName, contact: pending.contact_info, mode },
+      'iMessage contact approved and registered',
+    );
     return { success: true };
   } catch (err) {
     logger.error({ err, chatGuid }, 'Failed to approve contact');
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
   }
 }
 
@@ -454,19 +508,30 @@ export async function denyIMessageContact(
   reason?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { addBlockedContact, getPendingApproval, removePendingApproval } = await import('./db.js');
+    const { addBlockedContact, getPendingApproval, removePendingApproval } =
+      await import('./db.js');
 
     const pending = getPendingApproval(chatGuid);
     if (!pending) return { success: false, error: 'No pending approval found' };
 
-    addBlockedContact(chatGuid, pending.contact_info, reason || 'Denied by user');
+    addBlockedContact(
+      chatGuid,
+      pending.contact_info,
+      reason || 'Denied by user',
+    );
     removePendingApproval(chatGuid);
 
-    logger.info({ chatGuid, contact: pending.contact_info, reason }, 'iMessage contact denied and blocked');
+    logger.info(
+      { chatGuid, contact: pending.contact_info, reason },
+      'iMessage contact denied and blocked',
+    );
     return { success: true };
   } catch (err) {
     logger.error({ err, chatGuid }, 'Failed to deny contact');
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
   }
 }
 ```
@@ -478,7 +543,14 @@ Modify `src/index.ts`:
 1. **Add imports**:
 
 ```typescript
-import { connectIMessage, sendIMessage, setIMessageTyping, stopIMessage, approveIMessageContact, denyIMessageContact } from './imessage.js';
+import {
+  connectIMessage,
+  sendIMessage,
+  setIMessageTyping,
+  stopIMessage,
+  approveIMessageContact,
+  denyIMessageContact,
+} from './imessage.js';
 import { IMESSAGE_ONLY } from './config.js';
 ```
 
@@ -522,7 +594,11 @@ function deliverToActiveContainer(chatJid: string): boolean {
 
   const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-  const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+  const missedMessages = getMessagesSince(
+    chatJid,
+    sinceTimestamp,
+    ASSISTANT_NAME,
+  );
 
   if (missedMessages.length === 0) return false;
 
@@ -562,16 +638,23 @@ function deliverToActiveContainer(chatJid: string): boolean {
 Also add a module-level `activeIdleTimers` map and register idle timers in `processGroupMessages`:
 
 ```typescript
-const activeIdleTimers = new Map<string, { reset: () => void; clear: () => void }>();
+const activeIdleTimers = new Map<
+  string,
+  { reset: () => void; clear: () => void }
+>();
 ```
 
 In `processGroupMessages`, after creating the idle timer, register it:
+
 ```typescript
 activeIdleTimers.set(chatJid, {
   reset: resetIdleTimer,
-  clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+  clear: () => {
+    if (idleTimer) clearTimeout(idleTimer);
+  },
 });
 ```
+
 And clean up when done: `activeIdleTimers.delete(chatJid);`
 
 5. **Update main() function**:
@@ -748,6 +831,7 @@ EOF
 ```
 
 Or to use your main agent instead of isolated:
+
 ```bash
 cat > ~/nanoclaw/data/ipc/main/tasks/approve-contact.json << EOF
 {
@@ -778,6 +862,7 @@ EOF
 NanoClaw monitors collaboration folders on the **host system** (outside containers) and automatically wakes agents when files change. This enables true multi-agent collaboration where agents can work together on shared tasks.
 
 **How it works:**
+
 - **Host watcher**: Runs on your Mac using `fswatch` (or `inotifywait` on Linux)
 - **Monitors**: `~/nanoclaw-collaboration/` and `~/Library/Mobile Documents/com~apple~CloudDocs/Shelby/`
 - **Instant wake-up**: When files change, finds all agents with those folders mounted
@@ -785,11 +870,13 @@ NanoClaw monitors collaboration folders on the **host system** (outside containe
 - **Zero CPU idle**: Uses kernel-level notifications (no polling)
 
 **Installation (macOS):**
+
 ```bash
 brew install fswatch
 ```
 
 **What happens when a file changes:**
+
 1. You drop `task.md` in `~/nanoclaw-collaboration/`
 2. Host watcher detects change via `fswatch` (~0.5s latency)
 3. Finds agents with collaboration folder mounted (e.g., main + Dawn's agent)
@@ -799,6 +886,7 @@ brew install fswatch
 7. Agents stay alive 5 minutes for follow-up collaboration
 
 **Example collaboration workflow:**
+
 1. **Your agent** creates `/workspace/collaboration/research-findings.md`
 2. **Host watcher** detects the new file on your Mac
 3. **Dawn's agent** automatically wakes up and receives notification
@@ -809,6 +897,7 @@ brew install fswatch
 8. **Real-time collaboration** without manual polling or waiting
 
 **Benefits:**
+
 - **True async collaboration**: Agents work together across time zones
 - **No polling overhead**: Zero CPU when idle, instant wake on changes
 - **Bidirectional**: Both agents notify each other automatically
@@ -816,6 +905,7 @@ brew install fswatch
 - **iCloud integration**: Also monitors iCloud shared folders for external collaboration
 
 **Inside containers (automatic):**
+
 - Container-level `FileWatcher` monitors `/workspace/ipc/input`, `/workspace/collaboration`, `/workspace/icloud`, `/workspace/group`
 - Uses `inotifywait` (Linux) for instant notifications while agent is running
 - Filters out temporary files (`.tmp`, `~`, `.hidden`)
@@ -850,6 +940,7 @@ When a new contact messages:
 7. If denied: Contact is blocked and future messages ignored
 
 **Approve command (isolated agent):**
+
 ```json
 {
   "type": "approve_imessage_contact",
@@ -858,6 +949,7 @@ When a new contact messages:
 ```
 
 **Approve command (main agent):**
+
 ```json
 {
   "type": "approve_imessage_contact",
@@ -867,6 +959,7 @@ When a new contact messages:
 ```
 
 **Deny command:**
+
 ```json
 {
   "type": "deny_imessage_contact",
@@ -882,12 +975,14 @@ When a new contact messages:
 **Symptoms:** Agents don't wake up when files are added to collaboration folder
 
 **Check if fswatch is installed (macOS):**
+
 ```bash
 which fswatch
 # Should output: /opt/homebrew/bin/fswatch
 ```
 
 **Install fswatch:**
+
 ```bash
 brew install fswatch
 # Restart NanoClaw:
@@ -896,12 +991,14 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
 **Verify watcher started:**
+
 ```bash
 grep "Collaboration.*watcher" ~/nanoclaw/logs/nanoclaw.log | tail -3
 # Should see: "Collaboration watcher started (fswatch)"
 ```
 
 **Test file watching:**
+
 ```bash
 echo "test" > ~/nanoclaw-collaboration/test.txt
 # Check logs for trigger:
@@ -921,14 +1018,17 @@ grep "Triggering agents" ~/nanoclaw/logs/nanoclaw.log | tail -1
 1. Verify Messages.app is running
 2. Check you're signed into iMessage
 3. Test AppleScript manually:
+
 ```bash
 osascript -e 'tell application "Messages" to get version'
 ```
+
 4. Check error logs for AppleScript failures
 
 ### Database permission errors
 
 Re-grant Full Disk Access:
+
 1. Remove your Node.js binary from Full Disk Access list (find with `which node`)
 2. Add it back
 3. Restart NanoClaw service
@@ -936,6 +1036,7 @@ Re-grant Full Disk Access:
 ### Contacts not persisting
 
 Registrations are stored in `~/nanoclaw/store/messages.db` (relative to your project root). Verify:
+
 ```bash
 sqlite3 ~/nanoclaw/store/messages.db "SELECT jid, name FROM registered_groups WHERE jid LIKE 'imsg:%';"
 ```

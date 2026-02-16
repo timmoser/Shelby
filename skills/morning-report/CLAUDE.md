@@ -19,19 +19,26 @@ Generate a comprehensive but concise morning report using this format:
 
 ## 📊 Overnight Updates
 
-### Upstream Sync Status
+### Upstream Changes Available
+
 [Read latest from `/workspace/group/reports/upstream-sync-YYYY-MM-DD.md` if exists]
-- **Status**: ✅ No updates / ⚡ [N] new commits / ⚠️ Needs review
-- **Summary**: [One-line summary of what happened]
-- **Action needed**: [If any cherry-picks recommended]
+
+- **Status**: ✅ No upstream changes / ⚡ [N] new commits available
+- **Recommended cherry-picks**: [count and one-line descriptions]
+- **Conflicts expected**: [any flagged conflicts]
+- **To apply**: `git cherry-pick <hashes>` (see report for details)
 
 ### Scheduled Tasks Completed
+
 [Check for any completed tasks from overnight]
+
 - [List completed tasks with brief results]
 - [Or "No scheduled tasks ran overnight"]
 
 ### Research/Agent Work
+
 [Check for any research reports in `/workspace/group/research/` or `/workspace/group/reports/`]
+
 - [List any new research completed]
 - [Or "No new research completed"]
 
@@ -42,19 +49,23 @@ Generate a comprehensive but concise morning report using this format:
 [Read from `/workspace/group/profile.md` and recent session memory]
 
 ### Studio Moser
+
 **Status**: [Current state from deliverables/memory]
 **Next Action**: [What needs to happen next]
 **Waiting On**: [You / Dawn / Decision]
 
 ### Dawn's Projects
+
 **Website**: [Status update]
 **Job Hunt**: [Any updates from her agent via collaboration folder]
 **Next Action**: [What's needed]
 
 ### Ausra Photos
+
 [If active, include status]
 
 ### [Other Active Projects]
+
 [Include if recently worked on]
 
 ---
@@ -106,7 +117,6 @@ Generate a comprehensive but concise morning report using this format:
 **Report generated in**: [timestamp]
 **Next report**: Tomorrow, 9 AM
 **Questions?** Just ask anytime.
-
 ```
 
 ---
@@ -114,6 +124,7 @@ Generate a comprehensive but concise morning report using this format:
 ## Guidelines
 
 ### Tone & Style
+
 - **Energizing**: Start day positively, make progress feel tangible
 - **Scannable**: Use emojis, headers, bullets for quick reading
 - **Actionable**: Every section should drive decisions or actions
@@ -121,6 +132,7 @@ Generate a comprehensive but concise morning report using this format:
 - **Contextual**: Connect dots between projects like Google CC does
 
 ### What to Include
+
 ✅ Overnight work completed (sync, research, scheduled tasks)
 ✅ Active project status (not ALL projects, just active ones)
 ✅ Clear priorities for today (max 3)
@@ -128,6 +140,7 @@ Generate a comprehensive but concise morning report using this format:
 ✅ Smart recommendations based on context
 
 ### What to Avoid
+
 ❌ Status dump of every project
 ❌ Repeating yesterday's report
 ❌ Generic priorities ("review email")
@@ -137,6 +150,7 @@ Generate a comprehensive but concise morning report using this format:
 ### Data Sources
 
 **Read these files**:
+
 - `/workspace/group/reports/upstream-sync-YYYY-MM-DD.md` - Overnight sync results
 - `/workspace/group/profile.md` - Active projects and context
 - `/workspace/group/session-memory.md` - Recent session summaries
@@ -145,6 +159,7 @@ Generate a comprehensive but concise morning report using this format:
 - `/workspace/group/tasks/` - Team deliverables
 
 **Infer priorities from**:
+
 - Recent session work (what Tim was focused on)
 - Blockers identified in past sessions
 - Deliverables waiting for review
@@ -153,6 +168,7 @@ Generate a comprehensive but concise morning report using this format:
 ### Smart Inference
 
 **If no clear priorities**: Suggest based on:
+
 - Projects with deliverables waiting (Studio Moser has inspiration board ready)
 - Projects approaching milestones
 - Items Tim mentioned wanting to work on
@@ -176,17 +192,21 @@ Ready to build something great today?
 
 ## 📊 Overnight Updates
 
-### Upstream Sync Status
-⚡ **3 new commits** from gavrielc/nanoclaw
-- 2 bug fixes (scheduler, memory leak)
+### Upstream Changes Available
+
+⚡ **3 new commits** available from upstream
+
+- 2 bug fixes recommended for cherry-pick (scheduler, memory leak)
 - 1 WhatsApp feature (skip)
-- **Recommend**: Cherry-pick scheduler fix
+- **To apply**: `git cherry-pick <hash1> <hash2>` — see sync report for details
 
 ### Scheduled Tasks Completed
+
 ✅ Upstream sync ran successfully (3 AM)
 ✅ Dawn's morning check-in scheduled
 
 ### Research/Agent Work
+
 No new research overnight
 
 ---
@@ -194,14 +214,17 @@ No new research overnight
 ## 🚀 Active Projects
 
 ### Studio Moser
+
 **Status**: 3 deliverables ready for review
+
 - Inspiration board (10 sites with analysis)
 - Site structure plan
 - Platform recommendation (Framer)
-**Next Action**: Review inspiration board, pick design direction
-**Waiting On**: Your review
+  **Next Action**: Review inspiration board, pick design direction
+  **Waiting On**: Your review
 
 ### Dawn's Projects
+
 **Website**: Strategy complete, waiting for essay collection
 **Job Hunt**: Resume versions ready
 **Next Action**: Dawn gathering personal essays (Priority 1)
@@ -211,7 +234,7 @@ No new research overnight
 ## ⚡ Today's Priorities
 
 1. **Review Studio Moser inspiration board** - Team waiting for design direction
-2. **Cherry-pick upstream scheduler fix** - Improves reliability
+2. **Review upstream sync report** — 2 bug fixes available for cherry-pick
 3. **Check in with Dawn** - See if she needs help with essays
 
 ---
@@ -232,7 +255,7 @@ Inbox clear
 ## 💡 Recommendations
 
 - **Studio Moser**: 30 min review this morning unblocks the team
-- **Upstream**: Scheduler fix is low-risk, high-value cherry-pick
+- **Upstream**: 2 bug fixes available — review sync report when you have a moment
 
 ---
 
@@ -251,21 +274,25 @@ Smooth sailing today - perfect for deep work.
 
 ## 📊 Overnight Updates
 
-### Upstream Sync Status
-✅ **No upstream changes** - fork up to date
+### Upstream Changes Available
+
+✅ **No upstream changes** — fork up to date
 
 ### Scheduled Tasks Completed
-✅ Upstream sync ran (no updates)
+
+✅ Upstream check ran (no updates)
 
 ---
 
 ## 🚀 Active Projects
 
 ### Studio Moser
+
 **Status**: Building site structure in Framer
 **Next Action**: Content gathering (client logos, portfolio images)
 
 ### Dawn's Projects
+
 **Website**: In progress (Week 2 of 8)
 **Job Hunt**: Active networking phase
 
@@ -274,6 +301,7 @@ Smooth sailing today - perfect for deep work.
 ## ⚡ Today's Priorities
 
 No urgent priorities - good day for:
+
 1. **Ausra Photos planning** - Haven't touched this in a while
 2. **Studio Moser content prep** - Gather portfolio assets
 3. **Strategic thinking** - Review year goals
@@ -295,6 +323,7 @@ Inbox clear
 ## 💡 Recommendations
 
 Perfect day to:
+
 - Deep work on a product (Ausra Photos architecture?)
 - Strategic planning session
 - Explore new creative ideas
@@ -324,6 +353,7 @@ Perfect day to:
 ## Success Metrics
 
 Good morning report:
+
 - ✅ Takes <2 min to read
 - ✅ Tim knows exactly what happened overnight
 - ✅ Clear on top 1-3 priorities
@@ -331,6 +361,7 @@ Good morning report:
 - ✅ Feels energized to start day
 
 Poor morning report:
+
 - ❌ Too long (>5 min read)
 - ❌ Just repeats yesterday
 - ❌ No clear priorities

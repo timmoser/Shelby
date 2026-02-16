@@ -50,7 +50,10 @@ export { escapeXml, formatMessages } from './router.js';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
-const activeIdleTimers = new Map<string, { reset: () => void; clear: () => void }>();
+const activeIdleTimers = new Map<
+  string,
+  { reset: () => void; clear: () => void }
+>();
 
 let imessage: IMessageChannel;
 const queue = new GroupQueue();
@@ -72,10 +75,7 @@ function loadState(): void {
 }
 
 function saveState(): void {
-  setRouterState(
-    'last_agent_timestamp',
-    JSON.stringify(lastAgentTimestamp),
-  );
+  setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
@@ -111,7 +111,9 @@ export function getAvailableGroups(): import('./container-runner.js').AvailableG
 }
 
 /** @internal - exported for testing */
-export function _setRegisteredGroups(groups: Record<string, RegisteredGroup>): void {
+export function _setRegisteredGroups(
+  groups: Record<string, RegisteredGroup>,
+): void {
   registeredGroups = groups;
 }
 
@@ -161,7 +163,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      logger.debug({ group: group.name }, 'Idle timeout, closing container stdin');
+      logger.debug(
+        { group: group.name },
+        'Idle timeout, closing container stdin',
+      );
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
   };
@@ -169,32 +174,46 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Register idle timer so follow-up messages can reset it
   activeIdleTimers.set(chatJid, {
     reset: resetIdleTimer,
-    clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+    clear: () => {
+      if (idleTimer) clearTimeout(idleTimer);
+    },
   });
 
   await setTyping(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, 'claude-opus-4-6', async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
-      if (text) {
-        await sendMessage(chatJid, text);
-        outputSentToUser = true;
+  const output = await runAgent(
+    group,
+    prompt,
+    chatJid,
+    'claude-opus-4-6',
+    async (result) => {
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info(
+          { group: group.name },
+          `Agent output: ${raw.slice(0, 200)}`,
+        );
+        if (text) {
+          await sendMessage(chatJid, text);
+          outputSentToUser = true;
+        }
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
-  });
+      if (result.status === 'error') {
+        hadError = true;
+      }
+    },
+  );
 
   await setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
@@ -204,13 +223,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     // If we already sent output to the user, don't roll back the cursor —
     // the user got their response and re-processing would send duplicates.
     if (outputSentToUser) {
-      logger.warn({ group: group.name }, 'Agent error after output was sent, skipping cursor rollback to prevent duplicates');
+      logger.warn(
+        { group: group.name },
+        'Agent error after output was sent, skipping cursor rollback to prevent duplicates',
+      );
       return true;
     }
     // Roll back cursor so retries can re-process these messages
     lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
-    logger.warn({ group: group.name }, 'Agent error, rolled back message cursor for retry');
+    logger.warn(
+      { group: group.name },
+      'Agent error, rolled back message cursor for retry',
+    );
     return false;
   }
 
@@ -228,7 +253,11 @@ function deliverToActiveContainer(chatJid: string): boolean {
 
   const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-  const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+  const missedMessages = getMessagesSince(
+    chatJid,
+    sinceTimestamp,
+    ASSISTANT_NAME,
+  );
 
   if (missedMessages.length === 0) return false;
 
@@ -322,7 +351,8 @@ async function runAgent(
         isMain,
         model,
       },
-      (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
+      (proc, containerName) =>
+        queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
     );
 
@@ -399,17 +429,26 @@ function ensureContainerSystemRunning(): void {
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
-    const containers: { status: string; configuration: { id: string } }[] = JSON.parse(output || '[]');
+    const containers: { status: string; configuration: { id: string } }[] =
+      JSON.parse(output || '[]');
     const orphans = containers
-      .filter((c) => c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'))
+      .filter(
+        (c) =>
+          c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'),
+      )
       .map((c) => c.configuration.id);
     for (const name of orphans) {
       try {
         execSync(`container stop ${name}`, { stdio: 'pipe' });
-      } catch { /* already stopped */ }
+      } catch {
+        /* already stopped */
+      }
     }
     if (orphans.length > 0) {
-      logger.info({ count: orphans.length, names: orphans }, 'Stopped orphaned containers');
+      logger.info(
+        { count: orphans.length, names: orphans },
+        'Stopped orphaned containers',
+      );
     }
   } catch (err) {
     logger.warn({ err }, 'Failed to clean up orphaned containers');
@@ -443,15 +482,18 @@ async function main(): Promise<void> {
       queue.enqueueMessageCheck(chatJid);
     },
     onApprovalRequest: async (chatJid, contactInfo, firstMessage) => {
-      logger.info({ chatJid, contactInfo }, 'New iMessage contact pending approval');
+      logger.info(
+        { chatJid, contactInfo },
+        'New iMessage contact pending approval',
+      );
       // Notify main agent about pending approval
       const mainJid = Object.keys(registeredGroups).find(
-        jid => registeredGroups[jid].folder === MAIN_GROUP_FOLDER
+        (jid) => registeredGroups[jid].folder === MAIN_GROUP_FOLDER,
       );
       if (mainJid) {
         const pendingApprovals = getPendingApprovals();
         const blockedContacts = getBlockedContacts();
-        const summary = `📱 iMessage Contact Approvals Needed:\n\nPending:\n${pendingApprovals.map(a => `- ${a.contact_info}: ${a.first_message || '(no message)'}`).join('\n')}\n\nBlocked:\n${blockedContacts.map(b => `- ${b.contact_info}: ${b.reason || 'no reason'}`).join('\n')}`;
+        const summary = `📱 iMessage Contact Approvals Needed:\n\nPending:\n${pendingApprovals.map((a) => `- ${a.contact_info}: ${a.first_message || '(no message)'}`).join('\n')}\n\nBlocked:\n${blockedContacts.map((b) => `- ${b.contact_info}: ${b.reason || 'no reason'}`).join('\n')}`;
         await sendMessage(mainJid, summary);
       }
     },
@@ -472,7 +514,10 @@ async function main(): Promise<void> {
       for (const [jid, group] of Object.entries(registeredGroups)) {
         if (!group.containerConfig?.additionalMounts) continue;
         for (const mount of group.containerConfig.additionalMounts) {
-          const expandedPath = mount.hostPath.replace('~', process.env.HOME || '');
+          const expandedPath = mount.hostPath.replace(
+            '~',
+            process.env.HOME || '',
+          );
           if (event.path.startsWith(expandedPath)) {
             affectedGroups.push(jid);
             break;
@@ -483,16 +528,30 @@ async function main(): Promise<void> {
       // Trigger each affected group
       for (const jid of affectedGroups) {
         const group = registeredGroups[jid];
-        logger.info({ group: group.name, file: path.basename(event.path) }, 'Collaboration file changed');
+        logger.info(
+          { group: group.name, file: path.basename(event.path) },
+          'Collaboration file changed',
+        );
         queue.enqueueTask(jid, `collab-file-${Date.now()}`, async () => {
           const prompt = `[A file was modified in your collaboration folder: ${path.basename(event.path)}]`;
-          await runAgent(group, prompt, jid, 'claude-opus-4-6', async (result) => {
-            if (result.result) {
-              const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
-              const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-              if (text) await sendMessage(jid, text);
-            }
-          });
+          await runAgent(
+            group,
+            prompt,
+            jid,
+            'claude-opus-4-6',
+            async (result) => {
+              if (result.result) {
+                const raw =
+                  typeof result.result === 'string'
+                    ? result.result
+                    : JSON.stringify(result.result);
+                const text = raw
+                  .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+                  .trim();
+                if (text) await sendMessage(jid, text);
+              }
+            },
+          );
         });
       }
     });
@@ -507,7 +566,8 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
     getSessions: () => sessions,
     queue,
-    onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
+    onProcess: (groupJid, proc, containerName, groupFolder) =>
+      queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage,
     registerIdleTimer: (chatJid, timer) => activeIdleTimers.set(chatJid, timer),
     unregisterIdleTimer: (chatJid) => activeIdleTimers.delete(chatJid),
@@ -524,7 +584,8 @@ async function main(): Promise<void> {
       // No-op for iMessage - no group metadata sync needed
     },
     getAvailableGroups,
-    writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    writeGroupsSnapshot: (gf, im, ag, rj) =>
+      writeGroupsSnapshot(gf, im, ag, rj),
   });
   queue.setProcessMessagesFn(processGroupMessages);
 
@@ -534,7 +595,8 @@ async function main(): Promise<void> {
 // Guard: only run when executed directly, not when imported by tests
 const isDirectRun =
   process.argv[1] &&
-  new URL(import.meta.url).pathname === new URL(`file://${process.argv[1]}`).pathname;
+  new URL(import.meta.url).pathname ===
+    new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {

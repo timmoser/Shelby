@@ -46,7 +46,9 @@
       "Bash(git remote:*)",
       "Bash(git pull:*)",
       "Bash(git checkout:*)",
-      "Bash(PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npx tsc:*)"
+      "Bash(PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npx tsc:*)",
+      "Bash(tail:*)",
+      "Bash(git fetch:*)"
     ]
   }
 }

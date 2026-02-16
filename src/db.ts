@@ -3,7 +3,12 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, STORE_DIR } from './config.js';
-import { NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
+import {
+  NewMessage,
+  RegisteredGroup,
+  ScheduledTask,
+  TaskRunLog,
+} from './types.js';
 
 let db: Database.Database;
 
@@ -295,9 +300,7 @@ export function getMessagesSince(
     WHERE chat_jid = ? AND timestamp > ? AND is_from_me = 0
     ORDER BY timestamp
   `;
-  return db
-    .prepare(sql)
-    .all(chatJid, sinceTimestamp) as NewMessage[];
+  return db.prepare(sql).all(chatJid, sinceTimestamp) as NewMessage[];
 }
 
 export function createTask(
@@ -348,7 +351,12 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'model'
+      | 'prompt'
+      | 'schedule_type'
+      | 'schedule_value'
+      | 'next_run'
+      | 'status'
+      | 'model'
     >
   >,
 ): void {
@@ -507,14 +515,12 @@ export function getRegisteredGroup(
     containerConfig: row.container_config
       ? JSON.parse(row.container_config)
       : undefined,
-    requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+    requiresTrigger:
+      row.requires_trigger === null ? undefined : row.requires_trigger === 1,
   };
 }
 
-export function setRegisteredGroup(
-  jid: string,
-  group: RegisteredGroup,
-): void {
+export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   db.prepare(
     `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -530,9 +536,7 @@ export function setRegisteredGroup(
 }
 
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
-  const rows = db
-    .prepare('SELECT * FROM registered_groups')
-    .all() as Array<{
+  const rows = db.prepare('SELECT * FROM registered_groups').all() as Array<{
     jid: string;
     name: string;
     folder: string;
@@ -551,7 +555,8 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       containerConfig: row.container_config
         ? JSON.parse(row.container_config)
         : undefined,
-      requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+      requiresTrigger:
+        row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     };
   }
   return result;
@@ -642,20 +647,24 @@ export function addPendingApproval(
 
 export function getPendingApprovals(): PendingApproval[] {
   return db
-    .prepare('SELECT * FROM pending_imessage_approvals ORDER BY requested_at DESC')
+    .prepare(
+      'SELECT * FROM pending_imessage_approvals ORDER BY requested_at DESC',
+    )
     .all() as PendingApproval[];
 }
 
-export function getPendingApproval(chatJid: string): PendingApproval | undefined {
+export function getPendingApproval(
+  chatJid: string,
+): PendingApproval | undefined {
   return db
     .prepare('SELECT * FROM pending_imessage_approvals WHERE chat_jid = ?')
     .get(chatJid) as PendingApproval | undefined;
 }
 
 export function markApprovalNotified(chatJid: string): void {
-  db.prepare('UPDATE pending_imessage_approvals SET notified = 1 WHERE chat_jid = ?').run(
-    chatJid,
-  );
+  db.prepare(
+    'UPDATE pending_imessage_approvals SET notified = 1 WHERE chat_jid = ?',
+  ).run(chatJid);
 }
 
 export function removePendingApproval(chatJid: string): void {

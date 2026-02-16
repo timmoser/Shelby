@@ -39,7 +39,8 @@ content = content.replace(oldSetTyping, newSetTyping);
 console.log('✓ Updated setTyping function');
 
 // 2. Update sendMessage function to add routing
-const sendMessagePattern = /async function sendMessage\(jid: string, text: string\): Promise<void> \{\s*if \(!waConnected\) \{/;
+const sendMessagePattern =
+  /async function sendMessage\(jid: string, text: string\): Promise<void> \{\s*if \(!waConnected\) \{/;
 const sendMessageReplacement = `async function sendMessage(jid: string, text: string): Promise<void> {
   // Route iMessage messages
   if (jid.startsWith('imsg:')) {

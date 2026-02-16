@@ -4,5 +4,5 @@
   "version": "1.0.0",
   "trigger": "daily",
   "schedule": "0 3 * * *",
-  "instructions": "Check for upstream updates, cherry-pick relevant commits, resolve conflicts, validate with build and tests, report results"
+  "instructions": "Fetch upstream, analyze changes, predict conflicts, and save a report. NEVER modify the working tree — report only."
 }

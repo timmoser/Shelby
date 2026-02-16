@@ -30,6 +30,7 @@ which docker && docker info >/dev/null 2>&1 && echo "Docker: installed and runni
 Apple Container is macOS-only. Use Docker instead.
 
 Tell the user:
+
 > You're on Linux, so we'll use Docker for container isolation. Let me set that up now.
 
 **Use the `/convert-to-docker` skill** to convert the codebase to Docker, then continue to Section 3.
@@ -39,6 +40,7 @@ Tell the user:
 **If Apple Container is already installed:** Continue to Section 3.
 
 **If Apple Container is NOT installed:** Ask the user:
+
 > NanoClaw needs a container runtime for isolated agent execution. You have two options:
 >
 > 1. **Apple Container** (default) - macOS-native, lightweight, designed for Apple silicon
@@ -49,6 +51,7 @@ Tell the user:
 #### Option A: Apple Container
 
 Tell the user:
+
 > Apple Container is required for running agents in isolated environments.
 >
 > 1. Download the latest `.pkg` from https://github.com/apple/container/releases
@@ -69,6 +72,7 @@ container --version
 #### Option B: Docker
 
 Tell the user:
+
 > You've chosen Docker. Let me set that up now.
 
 **Use the `/convert-to-docker` skill** to convert the codebase to Docker, then continue to Section 3.
@@ -76,16 +80,21 @@ Tell the user:
 ## 3. Configure Claude Authentication
 
 Ask the user:
+
 > Do you want to use your **Claude subscription** (Pro/Max) or an **Anthropic API key**?
 
 ### Option 1: Claude Subscription (Recommended)
 
 Tell the user:
+
 > Open another terminal window and run:
+>
 > ```
 > claude setup-token
 > ```
+>
 > A browser window will open for you to log in. Once authenticated, the token will be displayed in your terminal. Either:
+>
 > 1. Paste it here and I'll add it to `.env` for you, or
 > 2. Add it to `.env` yourself as `CLAUDE_CODE_OAUTH_TOKEN=<your-token>`
 
@@ -100,11 +109,13 @@ echo "CLAUDE_CODE_OAUTH_TOKEN=<token>" > .env
 Ask if they have an existing key to copy or need to create one.
 
 **Copy existing:**
+
 ```bash
 grep "^ANTHROPIC_API_KEY=" /path/to/source/.env > .env
 ```
 
 **Create new:**
+
 ```bash
 echo 'ANTHROPIC_API_KEY=' > .env
 ```
@@ -112,6 +123,7 @@ echo 'ANTHROPIC_API_KEY=' > .env
 Tell the user to add their key from https://console.anthropic.com/
 
 **Verify:**
+
 ```bash
 KEY=$(grep "^ANTHROPIC_API_KEY=" .env | cut -d= -f2)
 [ -n "$KEY" ] && echo "API key configured: ${KEY:0:10}...${KEY: -4}" || echo "Missing"
@@ -144,7 +156,9 @@ fi
 **IMPORTANT:** Run this command in the **foreground**. The QR code is multi-line ASCII art that must be displayed in full. Do NOT run in background or truncate the output.
 
 Tell the user:
+
 > A QR code will appear below. On your phone:
+>
 > 1. Open WhatsApp
 > 2. Tap **Settings → Linked Devices → Link a Device**
 > 3. Scan the QR code
@@ -166,6 +180,7 @@ This step configures three things at once: the trigger word, the main channel ty
 ### 6a. Ask for trigger word
 
 Ask the user:
+
 > What trigger word do you want to use? (default: `Andy`)
 >
 > In group chats, messages starting with `@TriggerWord` will be sent to Claude.
@@ -180,6 +195,7 @@ Store their choice for use in the steps below.
 > **Important: Your "main" channel is your admin control portal.**
 >
 > The main channel has elevated privileges:
+>
 > - Can see messages from ALL other registered groups
 > - Can manage and delete tasks across all groups
 > - Can write to global memory that all groups can read
@@ -190,6 +206,7 @@ Store their choice for use in the steps below.
 > **Question:** Which setup will you use for your main channel?
 >
 > Options:
+>
 > 1. Personal chat (Message Yourself) - Recommended
 > 2. Solo WhatsApp group (just me)
 > 3. Group with other people (I understand the security implications)
@@ -199,11 +216,13 @@ If they choose option 3, ask a follow-up:
 > You've chosen a group with other people. This means everyone in that group will have admin privileges over NanoClaw.
 >
 > Are you sure you want to proceed? The other members will be able to:
+>
 > - Read messages from your other registered chats
 > - Schedule and manage tasks
 > - Access any directories you've mounted
 >
 > Options:
+>
 > 1. Yes, I understand and want to proceed
 > 2. No, let me use a personal chat or solo group instead
 
@@ -216,6 +235,7 @@ npm run build
 ```
 
 Then run briefly (set Bash tool timeout to 15000ms):
+
 ```bash
 npm run dev
 ```
@@ -227,11 +247,13 @@ Personal chats are NOT synced to the database on startup — only groups are. In
 **For group** (they chose option 2 or 3):
 
 Groups are synced on startup via `groupFetchAllParticipating`. Query the database for recent groups:
+
 ```bash
 sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE jid LIKE '%@g.us' AND jid != '__group_sync__' ORDER BY last_message_time DESC LIMIT 40"
 ```
 
 Show only the **10 most recent** group names to the user and ask them to pick one. If they say their group isn't in the list, show the next batch from the results you already have. If they tell you the group name directly, look it up:
+
 ```bash
 sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE name LIKE '%GROUP_NAME%' AND jid LIKE '%@g.us'"
 ```
@@ -265,10 +287,12 @@ mkdir -p data
 Then write `data/registered_groups.json` with the correct JID, trigger, and timestamp.
 
 If the user chose a name other than `Andy`, also update:
+
 1. `groups/global/CLAUDE.md` - Change "# Andy" and "You are Andy" to the new name
 2. `groups/main/CLAUDE.md` - Same changes at the top
 
 Ensure the groups folder exists:
+
 ```bash
 mkdir -p groups/main/logs
 ```
@@ -276,6 +300,7 @@ mkdir -p groups/main/logs
 ## 7. Configure External Directory Access (Mount Allowlist)
 
 Ask the user:
+
 > Do you want the agent to be able to access any directories **outside** the NanoClaw project?
 >
 > Examples: Git repositories, project folders, documents you want Claude to work on.
@@ -303,15 +328,18 @@ If **yes**, ask follow-up questions:
 ### 7a. Collect Directory Paths
 
 Ask the user:
+
 > Which directories do you want to allow access to?
 >
 > You can specify:
+>
 > - A parent folder like `~/projects` (allows access to anything inside)
 > - Specific paths like `~/repos/my-app`
 >
 > List them one per line, or give me a comma-separated list.
 
 For each directory they provide, ask:
+
 > Should `[directory]` be **read-write** (agents can modify files) or **read-only**?
 >
 > Read-write is needed for: code changes, creating files, git commits
@@ -320,6 +348,7 @@ For each directory they provide, ask:
 ### 7b. Configure Non-Main Group Access
 
 Ask the user:
+
 > Should **non-main groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
 >
 > Recommended: **Yes** - this prevents other groups from modifying files even if you grant them access to a directory.
@@ -362,16 +391,20 @@ cat ~/.config/nanoclaw/mount-allowlist.json
 ```
 
 Tell the user:
+
 > Mount allowlist configured. The following directories are now accessible:
+>
 > - `~/projects` (read-write)
 > - `~/docs` (read-only)
 >
 > **Security notes:**
+>
 > - Sensitive paths (`.ssh`, `.gnupg`, `.aws`, credentials) are always blocked
 > - This config file is stored outside the project, so agents cannot modify it
 > - Changes require restarting the NanoClaw service
 >
 > To grant a group access to a directory, add it to their config in `data/registered_groups.json`:
+>
 > ```json
 > "containerConfig": {
 >   "additionalMounts": [
@@ -379,6 +412,7 @@ Tell the user:
 >   ]
 > }
 > ```
+>
 > The folder appears inside the container at `/workspace/extra/<folder-name>` (derived from the last segment of the path). Add `"readonly": false` for write access, or `"containerPath": "custom-name"` to override the default name.
 
 ## 8. Configure launchd Service
@@ -437,6 +471,7 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
 Verify it's running:
+
 ```bash
 launchctl list | grep nanoclaw
 ```
@@ -444,11 +479,13 @@ launchctl list | grep nanoclaw
 ## 9. Test
 
 Tell the user (using the assistant name they configured):
+
 > Send `@ASSISTANT_NAME hello` in your registered chat.
 >
 > **Tip:** In your main channel, you don't need the `@` prefix — just send `hello` and the agent will respond.
 
 Check the logs:
+
 ```bash
 tail -f logs/nanoclaw.log
 ```
@@ -460,12 +497,14 @@ The user should receive a response in WhatsApp.
 **Service not starting**: Check `logs/nanoclaw.error.log`
 
 **Container agent fails with "Claude Code process exited with code 1"**:
+
 - Ensure the container runtime is running:
   - Apple Container: `container system start`
   - Docker: `docker info` (start Docker Desktop on macOS, or `sudo systemctl start docker` on Linux)
 - Check container logs: `cat groups/main/logs/container-*.log | tail -50`
 
 **No response to messages**:
+
 - Verify the trigger pattern matches (e.g., `@AssistantName` at start of message)
 - Main channel doesn't require a prefix — all messages are processed
 - Personal/solo chats with `requiresTrigger: false` also don't need a prefix
@@ -473,11 +512,13 @@ The user should receive a response in WhatsApp.
 - Check `logs/nanoclaw.log` for errors
 
 **WhatsApp disconnected**:
+
 - The service will show a macOS notification
 - Run `npm run auth` to re-authenticate
 - Restart the service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
 
 **Unload service**:
+
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 ```

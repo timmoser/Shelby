@@ -19,7 +19,7 @@ export class FileWatcher extends EventEmitter {
 
   constructor(watchDirs: string[]) {
     super();
-    this.watchDirs = watchDirs.filter(dir => existsSync(dir));
+    this.watchDirs = watchDirs.filter((dir) => existsSync(dir));
   }
 
   start(): void {
@@ -35,15 +35,21 @@ export class FileWatcher extends EventEmitter {
     console.error(`[file-watcher] Watching: ${this.watchDirs.join(', ')}`);
 
     // Spawn inotifywait in monitor mode
-    this.process = spawn('inotifywait', [
-      '-m',  // Monitor mode (continuous)
-      '-q',  // Quiet (only output events)
-      '-e', 'create,moved_to,modify,close_write',
-      '--format', '%w%f|%e',
-      ...this.watchDirs,
-    ], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    this.process = spawn(
+      'inotifywait',
+      [
+        '-m', // Monitor mode (continuous)
+        '-q', // Quiet (only output events)
+        '-e',
+        'create,moved_to,modify,close_write',
+        '--format',
+        '%w%f|%e',
+        ...this.watchDirs,
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
 
     // Parse output line by line
     const rl = readline.createInterface({
@@ -57,7 +63,11 @@ export class FileWatcher extends EventEmitter {
 
       // Skip temporary and hidden files
       const filename = filepath.split('/').pop() || '';
-      if (filename.startsWith('.') || filename.endsWith('~') || filename.endsWith('.tmp')) {
+      if (
+        filename.startsWith('.') ||
+        filename.endsWith('~') ||
+        filename.endsWith('.tmp')
+      ) {
         return;
       }
 

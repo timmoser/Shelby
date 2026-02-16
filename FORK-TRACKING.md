@@ -12,11 +12,13 @@
 **Our Fork**: https://github.com/timmoser/Shelby
 
 **Fork Status**: **PERMANENT DIVERGENCE**
+
 - Upstream: WhatsApp-based
 - Ours: iMessage-based (WhatsApp completely removed)
 - Strategy: Cherry-pick improvements, never rebase
 
 **Last Upstream Comparison**:
+
 - Date: 2026-02-11
 - Divergence point: 8eb80d4 (prevent infinite message replay)
 - Our commits ahead: 4 major architectural changes
@@ -28,6 +30,7 @@
 ## Core Files Modified
 
 ### iMessage/Channel Architecture (Recent Major Changes)
+
 - **Files**:
   - `container/agent-runner/src/index.ts`
   - `.claude/skills/add-imessage/SKILL.md`
@@ -41,6 +44,7 @@
 - **Conflict Strategy**: Critical custom implementation - preserve our iMessage integration
 
 ### Agent Collaboration & File Watching
+
 - **Files**:
   - `container/agent-runner/src/file-watcher.sh`
   - `container/agent-runner/src/file-watcher.ts`
@@ -50,6 +54,7 @@
 - **Conflict Strategy**: Keep our implementation, core feature
 
 ### Skills System Enhancements
+
 - **Files**:
   - `.claude/skills/add-gmail/SKILL.md`
   - `.claude/skills/add-telegram/SKILL.md`
@@ -63,6 +68,7 @@
 - **Conflict Strategy**: Keep our skills, merge if upstream adds skill management improvements
 
 ### Security & Performance Fixes
+
 - **Files**: Various core files
 - **Customization**:
   - Security review commits (899b29c, 31a6a69, 6a6fc5e)
@@ -73,6 +79,7 @@
 - **Conflict Strategy**: These are bug fixes - adopt any upstream equivalents
 
 ### Container & Docker
+
 - **Files**:
   - `container/Dockerfile`
   - `container/agent-runner/package.json`
@@ -82,6 +89,7 @@
 - **Conflict Strategy**: Merge carefully - container changes can break everything
 
 ### Documentation Updates
+
 - **Files**:
   - `CLAUDE.md`
   - `README.md`
@@ -96,12 +104,14 @@
 - **Conflict Strategy**: Low risk - merge upstream improvements, keep our custom sections
 
 ### Scheduler & Task Management
+
 - **Files**: Task scheduler implementation
 - **Customization**: Scheduler fixes (part of ac68170 commit)
 - **Reason**: Reliable scheduled task execution
 - **Conflict Strategy**: Keep our fixes unless upstream has better solution
 
 ### Heartbeat System
+
 - **Files**:
   - `src/heartbeat-scheduler.ts`
   - `src/ipc.ts` (suppression logic)
@@ -118,6 +128,7 @@
 ## Sync History
 
 ### 2026-02-12 - Model Upgrade to Opus 4.6
+
 - Switched from Claude Sonnet 4.5 to Claude Opus 4.6 for improved capabilities
 - Modified agent runner to use `claude-opus-4-20250514` model
 - Files modified:
@@ -125,6 +136,7 @@
 - **Rebuild required**: Run `cd container && ./build.sh` from host to rebuild container
 
 ### 2026-02-12 - Heartbeat Feature Implementation
+
 - Implemented OpenClaw-style heartbeat functionality for proactive monitoring
 - Added heartbeat scheduler module (`src/heartbeat-scheduler.ts`)
 - Integrated HEARTBEAT_OK suppression in IPC message handler
@@ -138,6 +150,7 @@
   - `groups/main/heartbeat-config.json` (new)
 
 **Feature Details**:
+
 - Runs hourly during active hours (9 AM - 6 PM Pacific)
 - Reads HEARTBEAT.md checklist for standing instructions
 - Automatically suppresses HEARTBEAT_OK responses
@@ -145,6 +158,7 @@
 - Configurable interval and active hours per group
 
 ### 2026-02-11 - Initial Setup & Documentation
+
 - Forked repository from anthropics/nanoclaw
 - Setup upstream remote tracking
 - Created automated sync skill (runs 3 AM daily)
@@ -152,6 +166,7 @@
 - Created morning report system (9 AM daily with sync results)
 
 **Major Custom Work Identified**:
+
 - iMessage/Channel architecture refactor (replacing WhatsApp)
 - Agent collaboration via file watching
 - Multiple security fixes (memory DoS, message loss, regex escaping)

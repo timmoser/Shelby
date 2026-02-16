@@ -9,6 +9,7 @@
 ## What Gets Backed Up
 
 ### Critical Data
+
 1. **Messages Database** - `/workspace/project/store/messages.db`
    - iMessage history
    - Registered groups
@@ -40,6 +41,7 @@
 ## Backup Strategy
 
 ### Local Backups (Primary)
+
 **Location**: `/workspace/project/backups/YYYY-MM-DD-HHMM/`
 
 **Retention**: Keep last 7 daily backups, then weekly for 4 weeks
@@ -47,6 +49,7 @@
 **Format**: Timestamped directories with full copies
 
 ### Git Backups (Secondary)
+
 **Location**: Separate `backups` branch in GitHub repo
 
 **What**: Databases and critical configs (not full session history - too large)
@@ -54,6 +57,7 @@
 **Retention**: Git history serves as backup timeline
 
 ### iCloud Sync (Tertiary)
+
 **Location**: `/workspace/extra/icloud/backups/`
 
 **What**: Latest backup copy for off-machine redundancy
@@ -65,6 +69,7 @@
 When this skill runs at 4 AM:
 
 ### 1. Create Backup Directory
+
 ```bash
 TIMESTAMP=$(date +%Y-%m-%d-%H%M)
 BACKUP_DIR="/workspace/project/backups/$TIMESTAMP"
@@ -72,6 +77,7 @@ mkdir -p "$BACKUP_DIR"
 ```
 
 ### 2. Backup Databases
+
 ```bash
 # Messages database (critical!)
 cp /workspace/project/store/messages.db "$BACKUP_DIR/"
@@ -81,6 +87,7 @@ cp -r /workspace/project/data/sessions "$BACKUP_DIR/"
 ```
 
 ### 3. Backup Configurations
+
 ```bash
 # Group workspace
 cp -r /workspace/group "$BACKUP_DIR/"
@@ -93,6 +100,7 @@ cp /workspace/project/FORK-TRACKING.md "$BACKUP_DIR/"
 ```
 
 ### 4. Create Backup Manifest
+
 ```bash
 cat > "$BACKUP_DIR/MANIFEST.md" << EOF
 # Backup Manifest
@@ -125,6 +133,7 @@ EOF
 ```
 
 ### 5. Cleanup Old Backups
+
 ```bash
 # Keep last 7 daily backups
 cd /workspace/project/backups
@@ -138,6 +147,7 @@ fi
 ```
 
 ### 6. Sync to iCloud (Optional)
+
 ```bash
 # Copy latest backup to iCloud for off-machine redundancy
 if [ -d "/workspace/extra/icloud" ]; then
@@ -146,6 +156,7 @@ fi
 ```
 
 ### 7. Git Backup (Compressed)
+
 ```bash
 # Create compressed backup for git
 cd /workspace/project
@@ -164,6 +175,7 @@ git checkout main
 ```
 
 ### 8. Report Status
+
 Save report to `/workspace/group/reports/backup-YYYY-MM-DD.md`:
 
 ```markdown
@@ -175,29 +187,35 @@ Save report to `/workspace/group/reports/backup-YYYY-MM-DD.md`:
 **Duration**: [seconds]
 
 ## What Was Backed Up
+
 - Messages DB: [size]
 - Session history: [file count]
 - Group workspace: [size]
 - Group configs: [file count]
 
 ## Backup Locations
+
 - Local: `/workspace/project/backups/[timestamp]/`
 - iCloud: `/workspace/extra/icloud/backups/latest/`
 - Git: `backups` branch (compressed)
 
 ## Retention
+
 - Daily backups kept: 7
 - Weekly backups kept: 4
 - Oldest backup: [date]
 
 ## Verification
+
 All critical files verified readable ✅
 
 ## Next Backup
+
 Tomorrow 4 AM
 
 ---
-*Automated backup completed successfully*
+
+_Automated backup completed successfully_
 ```
 
 ---
@@ -205,6 +223,7 @@ Tomorrow 4 AM
 ## Recovery Procedures
 
 ### Restore from Latest Backup
+
 ```bash
 # Find latest backup
 LATEST=$(ls -t /workspace/project/backups | head -1)
@@ -220,6 +239,7 @@ cp -r "/workspace/project/backups/$LATEST/sessions/"* /workspace/project/data/se
 ```
 
 ### Restore from Git
+
 ```bash
 # Checkout backups branch
 git fetch origin backups
@@ -230,6 +250,7 @@ tar -xzf backup-*.tar.gz -C /workspace/project/
 ```
 
 ### Restore from iCloud
+
 ```bash
 # Copy from iCloud sync
 cp -r /workspace/extra/icloud/backups/latest/* /workspace/project/
@@ -240,12 +261,14 @@ cp -r /workspace/extra/icloud/backups/latest/* /workspace/project/
 ## Monitoring
 
 Include backup status in morning report:
+
 - Last backup time
 - Backup size
 - Any failures or warnings
 - Disk space remaining
 
 Alert Tim if:
+
 - Backup fails
 - Disk space < 1GB
 - Database corruption detected
@@ -256,6 +279,7 @@ Alert Tim if:
 ## Testing
 
 **Monthly recovery test**:
+
 1. Create test environment
 2. Restore from 1-week-old backup
 3. Verify all data intact
@@ -269,11 +293,13 @@ Alert Tim if:
 ## Disk Space Management
 
 **Monitor**:
+
 - `/workspace/project/backups/` size
 - Available disk space
 - Growth rate
 
 **Cleanup if needed**:
+
 - Reduce daily retention (7 → 5 days)
 - Reduce weekly retention (4 → 2 weeks)
 - Compress old backups

@@ -1,0 +1,7 @@
+{
+  "name": "apply-upstream",
+  "description": "Manually cherry-pick upstream commits into the fork with safety net, conflict resolution, and validation",
+  "version": "1.0.0",
+  "trigger": "manual",
+  "instructions": "Cherry-pick specified upstream commits (or all recommended ones from the latest sync report), resolve conflicts, validate, and push."
+}

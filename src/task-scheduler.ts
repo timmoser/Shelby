@@ -10,7 +10,11 @@ import {
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
-import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
+import {
+  ContainerOutput,
+  runContainerAgent,
+  writeTasksSnapshot,
+} from './container-runner.js';
 import {
   getAllTasks,
   getDueTasks,
@@ -27,9 +31,17 @@ export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
   getSessions: () => Record<string, string>;
   queue: GroupQueue;
-  onProcess: (groupJid: string, proc: ChildProcess, containerName: string, groupFolder: string) => void;
+  onProcess: (
+    groupJid: string,
+    proc: ChildProcess,
+    containerName: string,
+    groupFolder: string,
+  ) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
-  registerIdleTimer?: (chatJid: string, timer: { reset: () => void; clear: () => void }) => void;
+  registerIdleTimer?: (
+    chatJid: string,
+    timer: { reset: () => void; clear: () => void },
+  ) => void;
   unregisterIdleTimer?: (chatJid: string) => void;
 }
 
@@ -48,7 +60,9 @@ async function runTask(
 
   // IMPORTANT: Update next_run IMMEDIATELY to prevent scheduler from re-enqueueing this task
   // We'll update it again with the correct value after completion
-  const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year from now
+  const farFuture = new Date(
+    Date.now() + 365 * 24 * 60 * 60 * 1000,
+  ).toISOString(); // 1 year from now
   updateTaskAfterRun(task.id, farFuture, 'Running...');
 
   const groups = deps.registeredGroups();
@@ -70,7 +84,11 @@ async function runTask(
       error: `Group not found: ${task.group_folder}`,
     });
     // Reset next_run since we failed immediately
-    updateTaskAfterRun(task.id, null, `Error: Group not found: ${task.group_folder}`);
+    updateTaskAfterRun(
+      task.id,
+      null,
+      `Error: Group not found: ${task.group_folder}`,
+    );
     return;
   }
 
@@ -106,7 +124,10 @@ async function runTask(
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      logger.debug({ taskId: task.id }, 'Scheduled task idle timeout, closing container stdin');
+      logger.debug(
+        { taskId: task.id },
+        'Scheduled task idle timeout, closing container stdin',
+      );
       deps.queue.closeStdin(task.chat_jid);
     }, IDLE_TIMEOUT);
   };
@@ -114,7 +135,9 @@ async function runTask(
   // Register idle timer so user messages can reset it
   deps.registerIdleTimer?.(task.chat_jid, {
     reset: resetIdleTimer,
-    clear: () => { if (idleTimer) clearTimeout(idleTimer); },
+    clear: () => {
+      if (idleTimer) clearTimeout(idleTimer);
+    },
   });
 
   try {
@@ -129,13 +152,19 @@ async function runTask(
         isScheduledTask: true,
         model: task.model || 'haiku',
       },
-      (proc, containerName) => deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
+      (proc, containerName) =>
+        deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Strip <internal>...</internal> blocks before sending to user
-          const raw = typeof streamedOutput.result === 'string' ? streamedOutput.result : JSON.stringify(streamedOutput.result);
-          const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const raw =
+            typeof streamedOutput.result === 'string'
+              ? streamedOutput.result
+              : JSON.stringify(streamedOutput.result);
+          const text = raw
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
           // Only send if there's text AND it's not a suppressed HEARTBEAT_OK
           if (text && !isHeartbeatOk(text)) {
             await deps.sendMessage(task.chat_jid, text);
@@ -225,10 +254,8 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
           continue;
         }
 
-        deps.queue.enqueueTask(
-          currentTask.chat_jid,
-          currentTask.id,
-          () => runTask(currentTask, deps),
+        deps.queue.enqueueTask(currentTask.chat_jid, currentTask.id, () =>
+          runTask(currentTask, deps),
         );
       }
     } catch (err) {
