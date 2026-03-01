@@ -13,6 +13,7 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
@@ -234,6 +235,9 @@ function buildContainerArgs(
   containerName: string,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
+
+  // Pass host timezone so container's local time matches the user's
+  args.push('-e', `TZ=${TIMEZONE}`);
 
   // Apple Container: --mount for readonly, -v for read-write
   for (const mount of mounts) {
