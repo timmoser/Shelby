@@ -49,6 +49,8 @@ export class IMessageChannel implements Channel {
   private lastProcessedRowId = 0;
   private connected = false;
   private opts: IMessageChannelOpts;
+  private db: Database.Database | null = null;
+  private pollStmt: Database.Statement | null = null;
 
   constructor(opts: IMessageChannelOpts) {
     this.opts = opts;
@@ -59,15 +61,42 @@ export class IMessageChannel implements Channel {
     return `imsg:${contactId}`;
   }
 
+  private openDb(): void {
+    // Keep a persistent connection — required to read WAL updates from
+    // IMDPersistenceAgent. Opening a fresh connection each poll cycle
+    // misses WAL data that hasn't been checkpointed yet.
+    this.db = new Database(MESSAGES_DB_PATH, { readonly: true });
+
+    const query = `
+      SELECT
+        m.ROWID,
+        m.guid,
+        m.text,
+        h.id as sender,
+        c.chat_identifier,
+        m.date,
+        m.is_from_me,
+        m.service
+      FROM message m
+      LEFT JOIN handle h ON m.handle_id = h.ROWID
+      LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+      LEFT JOIN chat c ON cmj.chat_id = c.ROWID
+      WHERE m.service = 'iMessage'
+        AND m.ROWID > ?
+      ORDER BY m.ROWID ASC
+    `;
+    this.pollStmt = this.db.prepare(query);
+    logger.info('Persistent iMessage DB connection opened');
+  }
+
   async connect(): Promise<void> {
-    // Initialize last processed row ID
+    // Open persistent connection and prepare statement
     try {
-      const db = new Database(MESSAGES_DB_PATH, { readonly: true });
-      const result = db
-        .prepare('SELECT MAX(ROWID) as maxId FROM message')
-        .get() as { maxId: number };
+      this.openDb();
+      const result = this.db!.prepare(
+        'SELECT MAX(ROWID) as maxId FROM message',
+      ).get() as { maxId: number };
       this.lastProcessedRowId = result.maxId || 0;
-      db.close();
       logger.info(
         { lastProcessedRowId: this.lastProcessedRowId },
         'Initialized with current max message ID',
@@ -91,43 +120,25 @@ export class IMessageChannel implements Channel {
   }
 
   private async pollMessages(): Promise<void> {
-    let db: Database.Database | null = null;
     try {
-      logger.info(
-        { lastProcessedRowId: this.lastProcessedRowId },
-        'Querying for new messages',
-      );
+      // Reopen if the connection was lost
+      if (!this.db || !this.pollStmt) {
+        this.openDb();
+      }
 
-      // Open fresh connection each time to avoid lock issues
-      db = new Database(MESSAGES_DB_PATH, { readonly: true });
-      logger.info('Database opened successfully');
+      const messages = this.pollStmt!.all(
+        this.lastProcessedRowId,
+      ) as MessageRow[];
 
-      const query = `
-        SELECT
-          m.ROWID,
-          m.guid,
-          m.text,
-          h.id as sender,
-          c.chat_identifier,
-          m.date,
-          m.is_from_me,
-          m.service
-        FROM message m
-        LEFT JOIN handle h ON m.handle_id = h.ROWID
-        LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
-        LEFT JOIN chat c ON cmj.chat_id = c.ROWID
-        WHERE m.service = 'iMessage'
-          AND m.ROWID > ?
-        ORDER BY m.ROWID ASC
-      `;
-
-      const stmt = db.prepare(query);
-      const messages = stmt.all(this.lastProcessedRowId) as MessageRow[];
-
-      logger.info(
-        { count: messages.length, lastProcessedRowId: this.lastProcessedRowId },
-        'Query completed',
-      );
+      if (messages.length > 0) {
+        logger.info(
+          {
+            count: messages.length,
+            lastProcessedRowId: this.lastProcessedRowId,
+          },
+          'New messages found',
+        );
+      }
 
       for (const msg of messages) {
         await this.processMessage(msg);
@@ -135,14 +146,14 @@ export class IMessageChannel implements Channel {
       }
     } catch (err) {
       logger.error({ err }, 'Error querying Messages database');
-    } finally {
-      if (db) {
-        try {
-          db.close();
-        } catch (err) {
-          logger.error({ err }, 'Error closing Messages database');
-        }
+      // Close broken connection so it gets reopened next cycle
+      try {
+        this.db?.close();
+      } catch {
+        /* ignore */
       }
+      this.db = null;
+      this.pollStmt = null;
     }
   }
 
@@ -285,6 +296,13 @@ export class IMessageChannel implements Channel {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
+    try {
+      this.db?.close();
+    } catch {
+      /* ignore */
+    }
+    this.db = null;
+    this.pollStmt = null;
     this.connected = false;
     logger.info('iMessage polling stopped');
   }
