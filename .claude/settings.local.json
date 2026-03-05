@@ -48,7 +48,11 @@
       "Bash(git checkout:*)",
       "Bash(PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npx tsc:*)",
       "Bash(tail:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(container builder stop)",
+      "Bash(container builder rm)",
+      "Bash(container builder start)",
+      "Bash(./container/build.sh)"
     ]
   }
 }
