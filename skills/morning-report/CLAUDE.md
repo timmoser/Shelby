@@ -35,6 +35,13 @@ Generate a comprehensive but concise morning report using this format:
 - [List completed tasks with brief results]
 - [Or "No scheduled tasks ran overnight"]
 
+### Backup Status
+
+[Read latest from `/workspace/group/reports/backup-YYYY-MM-DD.md` if exists]
+
+- **Status**: ✅ Success / ⚠️ Issues — [size], [file count]
+- Keep to one line unless there was a failure
+
 ### Research/Agent Work
 
 [Check for any research reports in `/workspace/group/research/` or `/workspace/group/reports/`]
@@ -152,6 +159,7 @@ Generate a comprehensive but concise morning report using this format:
 **Read these files**:
 
 - `/workspace/group/reports/upstream-sync-YYYY-MM-DD.md` - Overnight sync results
+- `/workspace/group/reports/backup-YYYY-MM-DD.md` - Daily backup results (4 AM)
 - `/workspace/group/profile.md` - Active projects and context
 - `/workspace/group/session-memory.md` - Recent session summaries
 - `/workspace/extra/collaboration/` - Messages from Dawn's agent
