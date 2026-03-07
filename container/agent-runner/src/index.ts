@@ -606,10 +606,10 @@ async function runQuery(
           command: 'npx',
           args: ['@upstash/context7-mcp'],
         },
-        // Playwright: browser automation (uses system Chromium, --no-sandbox for container)
+        // Playwright: browser automation (bundled Chromium installed at build time)
         playwright: {
           command: 'npx',
-          args: ['@playwright/mcp', '--headless', '--no-sandbox', '--executable-path', '/usr/bin/chromium'],
+          args: ['@playwright/mcp', '--headless', '--no-sandbox'],
         },
       },
       hooks: {

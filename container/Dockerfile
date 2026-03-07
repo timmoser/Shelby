@@ -26,14 +26,21 @@ RUN apt-get update && apt-get install -y \
     inotify-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Chromium path for agent-browser and Playwright
+# Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Install agent-browser, claude-code, and MCP servers globally
+# Skip Playwright browser download during npm install — we install it explicitly below
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm install -g agent-browser @anthropic-ai/claude-code \
     @upstash/context7-mcp @playwright/mcp
+
+# Install Playwright's bundled Chromium at build time so it doesn't download at runtime.
+# Playwright MCP calls `playwright install chrome` on startup; having it pre-installed skips that.
+# Browsers install to /root/.cache/ms-playwright/ — point PLAYWRIGHT_BROWSERS_PATH so the
+# non-root node user can find them at runtime.
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+RUN npx playwright install --with-deps chromium && chmod -R o+rx /root/.cache/ms-playwright
 
 # Create app directory
 WORKDIR /app
