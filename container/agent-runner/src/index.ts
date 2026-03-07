@@ -558,6 +558,10 @@ async function runQuery(
         'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
+        ...(process.env.PENCIL_MCP_URL ? ['mcp__pencil__*'] : []),
+        ...(process.env.GITHUB_PERSONAL_ACCESS_TOKEN ? ['mcp__github__*'] : []),
+        'mcp__context7__*',
+        'mcp__playwright__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -572,6 +576,41 @@ async function runQuery(
             NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
+        },
+        // Pencil MCP: proxied from host via HTTP
+        ...(process.env.PENCIL_MCP_URL
+          ? {
+              pencil: {
+                command: 'node',
+                args: [path.join(path.dirname(mcpServerPath), 'pencil-mcp-proxy.js')],
+                env: { PENCIL_MCP_URL: process.env.PENCIL_MCP_URL },
+              },
+            }
+          : {}),
+        // GitHub MCP: proxied via HTTP to api.githubcopilot.com
+        ...(process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+          ? {
+              github: {
+                command: 'node',
+                args: [path.join(path.dirname(mcpServerPath), 'http-mcp-proxy.js')],
+                env: {
+                  MCP_HTTP_URL: 'https://api.githubcopilot.com/mcp/',
+                  MCP_HTTP_NAME: 'github',
+                  MCP_HTTP_AUTH: `Bearer ${process.env.GITHUB_PERSONAL_ACCESS_TOKEN}`,
+                },
+              },
+            }
+          : {}),
+        // Context7: documentation lookup (runs directly as stdio)
+        context7: {
+          command: 'npx',
+          args: ['@upstash/context7-mcp'],
+        },
+        // Playwright: browser automation (uses system Chromium)
+        playwright: {
+          command: 'npx',
+          args: ['@playwright/mcp', '--headless'],
+          env: { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: '/usr/bin/chromium' },
         },
       },
       hooks: {

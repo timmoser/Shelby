@@ -52,7 +52,8 @@
       "Bash(container builder stop)",
       "Bash(container builder rm)",
       "Bash(container builder start)",
-      "Bash(./container/build.sh)"
+      "Bash(./container/build.sh)",
+      "Bash(gh repo list --limit 20)"
     ]
   }
 }

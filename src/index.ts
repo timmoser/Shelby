@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { ChildProcess, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -465,8 +465,56 @@ function ensureContainerSystemRunning(): void {
   }
 }
 
+// Pencil MCP HTTP server process (spawned on host for container access)
+const PENCIL_MCP_BINARY =
+  '/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64';
+const PENCIL_MCP_PORT = 8222;
+let pencilMcpProcess: ChildProcess | null = null;
+
+function startPencilMcpServer(): void {
+  if (!fs.existsSync(PENCIL_MCP_BINARY)) {
+    logger.debug('Pencil app not installed, skipping MCP server');
+    return;
+  }
+  try {
+    pencilMcpProcess = spawn(
+      PENCIL_MCP_BINARY,
+      ['--app', 'desktop', '--http', '--http-port', String(PENCIL_MCP_PORT)],
+      { stdio: 'ignore', detached: false },
+    );
+    pencilMcpProcess.on('error', (err) => {
+      logger.warn({ err }, 'Pencil MCP server failed to start');
+      pencilMcpProcess = null;
+    });
+    pencilMcpProcess.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        logger.warn({ code }, 'Pencil MCP server exited unexpectedly');
+      }
+      pencilMcpProcess = null;
+    });
+    logger.info({ port: PENCIL_MCP_PORT }, 'Pencil MCP HTTP server started');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to spawn Pencil MCP server');
+  }
+}
+
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
+  startPencilMcpServer();
+
+  // Cache GitHub token for container agents (GitHub MCP proxy)
+  if (!process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+    try {
+      const token = execSync('gh auth token', { encoding: 'utf-8', timeout: 5000 }).trim();
+      if (token) {
+        process.env.GITHUB_PERSONAL_ACCESS_TOKEN = token;
+        logger.info('GitHub token cached from gh CLI');
+      }
+    } catch {
+      logger.debug('GitHub CLI not available, GitHub MCP will be disabled in containers');
+    }
+  }
+
   initDatabase();
   logger.info('Database initialized');
   loadState();
@@ -474,6 +522,10 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    if (pencilMcpProcess) {
+      pencilMcpProcess.kill();
+      pencilMcpProcess = null;
+    }
     await queue.shutdown(10000);
     await imessage.disconnect();
     process.exit(0);

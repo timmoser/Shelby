@@ -239,6 +239,16 @@ function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
+  // Pencil MCP: expose HTTP endpoint to container via host gateway IP
+  const PENCIL_MCP_PORT = 8222;
+  args.push('-e', `PENCIL_MCP_URL=http://192.168.64.1:${PENCIL_MCP_PORT}`);
+
+  // GitHub MCP: pass personal access token for API access
+  const ghToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+  if (ghToken) {
+    args.push('-e', `GITHUB_PERSONAL_ACCESS_TOKEN=${ghToken}`);
+  }
+
   // Apple Container: --mount for readonly, -v for read-write
   for (const mount of mounts) {
     if (mount.readonly) {
