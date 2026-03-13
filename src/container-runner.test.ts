@@ -11,10 +11,17 @@ vi.mock('./config.js', () => ({
   CONTAINER_IMAGE: 'nanoclaw-agent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
   CONTAINER_TIMEOUT: 1800000, // 30min
+  CREDENTIAL_PROXY_PORT: 18000,
   DATA_DIR: '/tmp/nanoclaw-test-data',
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
   IDLE_TIMEOUT: 1800000, // 30min
   TIMEZONE: 'America/Los_Angeles',
+}));
+
+// Mock container-runtime
+vi.mock('./container-runtime.js', () => ({
+  CONTAINER_RUNTIME_BIN: 'container',
+  stopContainer: vi.fn(),
 }));
 
 // Mock logger

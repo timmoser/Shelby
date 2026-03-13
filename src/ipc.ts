@@ -259,7 +259,7 @@ export async function processTaskIpc(
           nextRun = scheduled.toISOString();
         }
 
-        const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const taskId = data.taskId || `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const contextMode =
           data.context_mode === 'group' || data.context_mode === 'isolated'
             ? data.context_mode
@@ -334,6 +334,70 @@ export async function processTaskIpc(
             'Unauthorized task cancel attempt',
           );
         }
+      }
+      break;
+
+    case 'update_task':
+      if (data.taskId) {
+        const task = getTaskById(data.taskId);
+        if (!task) {
+          logger.warn(
+            { taskId: data.taskId, sourceGroup },
+            'Task not found for update',
+          );
+          break;
+        }
+        if (!isMain && task.group_folder !== sourceGroup) {
+          logger.warn(
+            { taskId: data.taskId, sourceGroup },
+            'Unauthorized task update attempt',
+          );
+          break;
+        }
+
+        const updates: Record<string, string | null> = {};
+        if (data.prompt) updates.prompt = data.prompt as string;
+        if (data.schedule_type) updates.schedule_type = data.schedule_type as string;
+        if (data.schedule_value) updates.schedule_value = data.schedule_value as string;
+
+        // Recompute next_run if schedule changed
+        if (data.schedule_type || data.schedule_value) {
+          const newType = (data.schedule_type as string) || task.schedule_type;
+          const newValue = (data.schedule_value as string) || task.schedule_value;
+
+          let nextRun: string | null = null;
+          if (newType === 'cron') {
+            try {
+              const interval = CronExpressionParser.parse(newValue, {
+                tz: TIMEZONE,
+              });
+              nextRun = interval.next().toISOString();
+            } catch {
+              logger.warn(
+                { scheduleValue: newValue },
+                'Invalid cron in update_task',
+              );
+              break;
+            }
+          } else if (newType === 'interval') {
+            const ms = parseInt(newValue, 10);
+            if (!isNaN(ms) && ms > 0) {
+              nextRun = new Date(Date.now() + ms).toISOString();
+            }
+          } else if (newType === 'once') {
+            const scheduled = new Date(newValue);
+            if (!isNaN(scheduled.getTime())) {
+              nextRun = scheduled.toISOString();
+            }
+          }
+          if (nextRun) updates.next_run = nextRun;
+        }
+
+        updateTask(data.taskId, updates);
+        logger.info(
+          { taskId: data.taskId, sourceGroup, updates: Object.keys(updates) },
+          'Task updated via IPC',
+        );
       }
       break;
 

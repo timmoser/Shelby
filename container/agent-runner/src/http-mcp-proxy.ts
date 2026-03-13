@@ -32,7 +32,9 @@ if (!MCP_URL) {
 /** MCP JSON-RPC request helper */
 let rpcId = 1;
 async function mcpRequest(method: string, params?: unknown): Promise<unknown> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
   if (MCP_AUTH) {
     headers['Authorization'] = MCP_AUTH;
   }
@@ -46,7 +48,10 @@ async function mcpRequest(method: string, params?: unknown): Promise<unknown> {
   if (!res.ok) {
     throw new Error(`${MCP_NAME} HTTP ${res.status}: ${await res.text()}`);
   }
-  const json = (await res.json()) as { result?: unknown; error?: { message: string } };
+  const json = (await res.json()) as {
+    result?: unknown;
+    error?: { message: string };
+  };
   if (json.error) {
     throw new Error(`${MCP_NAME} error: ${json.error.message}`);
   }
@@ -72,7 +77,9 @@ async function main() {
   });
 
   // Fetch available tools
-  const listResult = (await mcpRequest('tools/list')) as { tools: McpToolDef[] };
+  const listResult = (await mcpRequest('tools/list')) as {
+    tools: McpToolDef[];
+  };
   const tools = listResult.tools;
 
   if (!tools || tools.length === 0) {
@@ -90,14 +97,21 @@ async function main() {
       toolName,
       tool.description || '',
       { _params: z.any().optional().describe('Tool parameters') },
-      async (args): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> => {
+      async (
+        args,
+      ): Promise<{
+        content: Array<{ type: 'text'; text: string }>;
+        isError?: boolean;
+      }> => {
         try {
           const params = args._params ?? args;
           const result = await mcpRequest('tools/call', {
             name: toolName,
             arguments: params,
           });
-          const callResult = result as { content?: Array<{ type: string; text?: string }> };
+          const callResult = result as {
+            content?: Array<{ type: string; text?: string }>;
+          };
           if (callResult.content) {
             return {
               content: callResult.content.map((c) => ({
@@ -106,7 +120,9 @@ async function main() {
               })),
             };
           }
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return {

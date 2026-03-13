@@ -33,7 +33,7 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   model?: string; // Claude model to use (opus-4-6, sonnet, haiku)
-  secrets?: Record<string, string>;
+  assistantName?: string;
 }
 
 interface ContainerOutput {
@@ -164,7 +164,7 @@ function getSessionSummary(
 /**
  * Archive the full transcript to conversations/ before compaction.
  */
-function createPreCompactHook(): HookCallback {
+function createPreCompactHook(assistantName?: string): HookCallback {
   return async (input, _toolUseId, _context) => {
     const preCompact = input as PreCompactHookInput;
     const transcriptPath = preCompact.transcript_path;
@@ -194,7 +194,11 @@ function createPreCompactHook(): HookCallback {
       const filename = `${date}-${name}.md`;
       const filePath = path.join(conversationsDir, filename);
 
-      const markdown = formatTranscriptMarkdown(messages, summary);
+      const markdown = formatTranscriptMarkdown(
+        messages,
+        summary,
+        assistantName,
+      );
       fs.writeFileSync(filePath, markdown);
 
       log(`Archived conversation to ${filePath}`);
@@ -281,6 +285,7 @@ function parseTranscript(content: string): ParsedMessage[] {
 function formatTranscriptMarkdown(
   messages: ParsedMessage[],
   title?: string | null,
+  assistantName = 'Andy',
 ): string {
   const now = new Date();
   const formatDateTime = (d: Date) =>
@@ -301,7 +306,7 @@ function formatTranscriptMarkdown(
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : 'Andy';
+    const sender = msg.role === 'user' ? 'User' : assistantName;
     const content =
       msg.content.length > 2000
         ? msg.content.slice(0, 2000) + '...'
@@ -561,7 +566,9 @@ async function runQuery(
         ...(process.env.PENCIL_MCP_URL ? ['mcp__pencil__*'] : []),
         ...(process.env.GITHUB_PERSONAL_ACCESS_TOKEN ? ['mcp__github__*'] : []),
         'mcp__context7__*',
-        'mcp__playwright__*',
+        ...(process.env.ENABLE_PLAYWRIGHT_MCP === '1'
+          ? ['mcp__playwright__*']
+          : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -582,7 +589,9 @@ async function runQuery(
           ? {
               pencil: {
                 command: 'node',
-                args: [path.join(path.dirname(mcpServerPath), 'pencil-mcp-proxy.js')],
+                args: [
+                  path.join(path.dirname(mcpServerPath), 'pencil-mcp-proxy.js'),
+                ],
                 env: { PENCIL_MCP_URL: process.env.PENCIL_MCP_URL },
               },
             }
@@ -592,7 +601,9 @@ async function runQuery(
           ? {
               github: {
                 command: 'node',
-                args: [path.join(path.dirname(mcpServerPath), 'http-mcp-proxy.js')],
+                args: [
+                  path.join(path.dirname(mcpServerPath), 'http-mcp-proxy.js'),
+                ],
                 env: {
                   MCP_HTTP_URL: 'https://api.githubcopilot.com/mcp/',
                   MCP_HTTP_NAME: 'github',
@@ -606,14 +617,20 @@ async function runQuery(
           command: 'npx',
           args: ['@upstash/context7-mcp'],
         },
-        // Playwright: browser automation (bundled Chromium installed at build time)
-        playwright: {
-          command: 'npx',
-          args: ['@playwright/mcp', '--headless', '--no-sandbox'],
-        },
+        // Playwright: browser automation (disabled by default — startup downloads Chrome which hangs)
+        ...(process.env.ENABLE_PLAYWRIGHT_MCP === '1'
+          ? {
+              playwright: {
+                command: 'npx',
+                args: ['@playwright/mcp', '--headless', '--no-sandbox'],
+              },
+            }
+          : {}),
       },
       hooks: {
-        PreCompact: [{ hooks: [createPreCompactHook()] }],
+        PreCompact: [
+          { hooks: [createPreCompactHook(containerInput.assistantName)] },
+        ],
         PreToolUse: [{ matcher: 'Bash', hooks: [createSanitizeBashHook()] }],
       },
     },
@@ -692,13 +709,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Build SDK env: merge secrets into process.env for the SDK only.
-  // Secrets never touch process.env itself, so Bash subprocesses can't see them.
+  // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
+  // No real secrets exist in the container environment.
   // The PreToolUse hook also strips secret env vars from every Bash command as a backstop.
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
-  for (const [key, value] of Object.entries(containerInput.secrets || {})) {
-    sdkEnv[key] = value;
-  }
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');

@@ -14,6 +14,7 @@ import {
 } from '../db.js';
 import { logger } from '../logger.js';
 import { Channel, OnInboundMessage, RegisteredGroup } from '../types.js';
+import { registerChannel } from './registry.js';
 
 const execPromise = promisify(exec);
 
@@ -356,3 +357,12 @@ export async function denyIMessageContact(chatJid: string): Promise<void> {
 
   logger.info({ chatJid }, 'iMessage contact denied and blocked');
 }
+
+// Self-register: iMessage is always available on macOS
+registerChannel('imessage', (opts) => {
+  return new IMessageChannel({
+    onMessage: opts.onMessage,
+    registeredGroups: opts.registeredGroups,
+    registerGroup: opts.registerGroup,
+  });
+});

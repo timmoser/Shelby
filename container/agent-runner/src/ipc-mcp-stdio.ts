@@ -192,13 +192,14 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       timestamp: new Date().toISOString(),
     };
 
-    const filename = writeIpcFile(TASKS_DIR, data);
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const filename = writeIpcFile(TASKS_DIR, { ...data, taskId });
 
     return {
       content: [
         {
           type: 'text' as const,
-          text: `Task scheduled (${filename}): ${args.schedule_type} - ${args.schedule_value}`,
+          text: `Task scheduled. ID: ${taskId} (${args.schedule_type}: ${args.schedule_value})`,
         },
       ],
     };
@@ -341,6 +342,117 @@ server.tool(
         {
           type: 'text' as const,
           text: `Task ${args.task_id} cancellation requested.`,
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'update_task',
+  `Update an existing scheduled task's prompt, schedule type, or schedule value. The task must exist and you must have permission to modify it (main group can modify any task, other groups can only modify their own).`,
+  {
+    task_id: z.string().describe('The task ID to update'),
+    prompt: z
+      .string()
+      .optional()
+      .describe('New prompt/instructions for the task'),
+    schedule_type: z
+      .enum(['cron', 'interval', 'once'])
+      .optional()
+      .describe('New schedule type'),
+    schedule_value: z.string().optional().describe('New schedule value'),
+  },
+  async (args) => {
+    if (!args.prompt && !args.schedule_type && !args.schedule_value) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'Nothing to update. Provide at least one of: prompt, schedule_type, schedule_value.',
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    // Validate new schedule values if provided
+    const scheduleType = args.schedule_type;
+    const scheduleValue = args.schedule_value;
+
+    if (scheduleType === 'cron' && scheduleValue) {
+      try {
+        CronExpressionParser.parse(scheduleValue);
+      } catch {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid cron: "${scheduleValue}". Use format like "0 9 * * *".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    } else if (scheduleType === 'interval' && scheduleValue) {
+      const ms = parseInt(scheduleValue, 10);
+      if (isNaN(ms) || ms <= 0) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid interval: "${scheduleValue}". Must be positive milliseconds.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    } else if (scheduleType === 'once' && scheduleValue) {
+      if (
+        /[Zz]$/.test(scheduleValue) ||
+        /[+-]\d{2}:\d{2}$/.test(scheduleValue)
+      ) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Timestamp must be local time without timezone suffix. Got "${scheduleValue}".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      const date = new Date(scheduleValue);
+      if (isNaN(date.getTime())) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid timestamp: "${scheduleValue}". Use local time format like "2026-02-01T15:30:00".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    const data: Record<string, string | undefined> = {
+      type: 'update_task',
+      taskId: args.task_id,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+    if (args.prompt) data.prompt = args.prompt;
+    if (args.schedule_type) data.schedule_type = args.schedule_type;
+    if (args.schedule_value) data.schedule_value = args.schedule_value;
+
+    writeIpcFile(TASKS_DIR, data);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${args.task_id} update requested.`,
         },
       ],
     };

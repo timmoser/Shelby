@@ -4,10 +4,17 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
+  CREDENTIAL_PROXY_PORT,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
+  TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
+import {
+  ensureContainerRuntimeRunning,
+  cleanupOrphans,
+} from './container-runtime.js';
+import { startCredentialProxy } from './credential-proxy.js';
 import {
   IMessageChannel,
   approveIMessageContact as approveIMessageContactHelper,
@@ -154,7 +161,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (!hasTrigger) return true;
   }
 
-  const prompt = formatMessages(missedMessages);
+  const prompt = formatMessages(missedMessages, TIMEZONE);
 
   // Save the old cursor so we can roll back on error.
   const previousCursor = lastAgentTimestamp[chatJid] || '';
@@ -279,7 +286,7 @@ function deliverToActiveContainer(chatJid: string): boolean {
     if (!hasTrigger) return false;
   }
 
-  const prompt = formatMessages(missedMessages);
+  const prompt = formatMessages(missedMessages, TIMEZONE);
   const delivered = queue.sendMessage(chatJid, prompt);
 
   if (delivered) {
@@ -360,6 +367,7 @@ async function runAgent(
         chatJid,
         isMain,
         model,
+        assistantName: ASSISTANT_NAME,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -394,76 +402,7 @@ async function setTyping(jid: string, isTyping: boolean): Promise<void> {
   await imessage.setTyping(jid, isTyping);
 }
 
-function ensureContainerSystemRunning(): void {
-  try {
-    execSync('container system status', { stdio: 'pipe' });
-    logger.debug('Apple Container system already running');
-  } catch {
-    logger.info('Starting Apple Container system...');
-    try {
-      execSync('container system start', { stdio: 'pipe', timeout: 30000 });
-      logger.info('Apple Container system started');
-    } catch (err) {
-      logger.error({ err }, 'Failed to start Apple Container system');
-      console.error(
-        '\n╔════════════════════════════════════════════════════════════════╗',
-      );
-      console.error(
-        '║  FATAL: Apple Container system failed to start                 ║',
-      );
-      console.error(
-        '║                                                                ║',
-      );
-      console.error(
-        '║  Agents cannot run without Apple Container. To fix:           ║',
-      );
-      console.error(
-        '║  1. Install from: https://github.com/apple/container/releases ║',
-      );
-      console.error(
-        '║  2. Run: container system start                               ║',
-      );
-      console.error(
-        '║  3. Restart NanoClaw                                          ║',
-      );
-      console.error(
-        '╚════════════════════════════════════════════════════════════════╝\n',
-      );
-      throw new Error('Apple Container system is required but failed to start');
-    }
-  }
-
-  // Kill and clean up orphaned NanoClaw containers from previous runs
-  try {
-    const output = execSync('container ls --format json', {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-    });
-    const containers: { status: string; configuration: { id: string } }[] =
-      JSON.parse(output || '[]');
-    const orphans = containers
-      .filter(
-        (c) =>
-          c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'),
-      )
-      .map((c) => c.configuration.id);
-    for (const name of orphans) {
-      try {
-        execSync(`container stop ${name}`, { stdio: 'pipe' });
-      } catch {
-        /* already stopped */
-      }
-    }
-    if (orphans.length > 0) {
-      logger.info(
-        { count: orphans.length, names: orphans },
-        'Stopped orphaned containers',
-      );
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to clean up orphaned containers');
-  }
-}
+// ensureContainerSystemRunning and cleanupOrphans are imported from container-runtime.ts
 
 // Pencil MCP HTTP server process (spawned on host for container access)
 const PENCIL_MCP_BINARY =
@@ -499,7 +438,9 @@ function startPencilMcpServer(): void {
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  ensureContainerRuntimeRunning();
+  cleanupOrphans();
+  await startCredentialProxy(CREDENTIAL_PROXY_PORT);
   startPencilMcpServer();
 
   // Cache GitHub token for container agents (GitHub MCP proxy)
@@ -530,8 +471,8 @@ async function main(): Promise<void> {
     await imessage.disconnect();
     process.exit(0);
   };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM').catch(() => process.exit(1)));
+  process.on('SIGINT', () => shutdown('SIGINT').catch(() => process.exit(1)));
 
   // Create iMessage channel
   imessage = new IMessageChannel({

@@ -1,6 +1,15 @@
+import os from 'os';
 import path from 'path';
 
-export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Shelby';
+import { readEnvFile } from './env.js';
+
+// Read config values from .env (falls back to process.env).
+// Secrets (API keys, tokens) are NOT read here — they are loaded only
+// by the credential proxy (credential-proxy.ts), never exposed to containers.
+const envConfig = readEnvFile(['ASSISTANT_NAME']);
+
+export const ASSISTANT_NAME =
+  process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Shelby';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -15,7 +24,7 @@ export const IMESSAGE_ONLY = process.env.IMESSAGE_ONLY === 'true';
 
 // Absolute paths needed for container mounts
 const PROJECT_ROOT = process.cwd();
-const HOME_DIR = process.env.HOME || '/Users/user';
+const HOME_DIR = process.env.HOME || os.homedir();
 
 // iMessage collaboration folder (shared workspace for isolated agents)
 export const IMESSAGE_COLLABORATION_FOLDER =
@@ -28,6 +37,12 @@ export const MOUNT_ALLOWLIST_PATH = path.join(
   '.config',
   'nanoclaw',
   'mount-allowlist.json',
+);
+export const SENDER_ALLOWLIST_PATH = path.join(
+  HOME_DIR,
+  '.config',
+  'nanoclaw',
+  'sender-allowlist.json',
 );
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
@@ -44,6 +59,10 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
   process.env.CONTAINER_MAX_OUTPUT_SIZE || '10485760',
   10,
 ); // 10MB default
+export const CREDENTIAL_PROXY_PORT = parseInt(
+  process.env.CREDENTIAL_PROXY_PORT || '18000',
+  10,
+);
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1200000', 10); // 20min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(

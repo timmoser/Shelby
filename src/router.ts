@@ -1,4 +1,5 @@
 import { ASSISTANT_NAME } from './config.js';
+import { formatLocalTime } from './timezone.js';
 import { Channel, NewMessage } from './types.js';
 
 export function escapeXml(s: string): string {
@@ -9,12 +10,16 @@ export function escapeXml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function formatMessages(messages: NewMessage[]): string {
-  const lines = messages.map(
-    (m) =>
-      `<message sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</message>`,
-  );
-  return `<messages>\n${lines.join('\n')}\n</messages>`;
+export function formatMessages(
+  messages: NewMessage[],
+  timezone?: string,
+): string {
+  const lines = messages.map((m) => {
+    const time = timezone ? formatLocalTime(m.timestamp, timezone) : m.timestamp;
+    return `<message sender="${escapeXml(m.sender_name)}" time="${time}">${escapeXml(m.content)}</message>`;
+  });
+  const header = timezone ? `<context timezone="${timezone}" />\n` : '';
+  return `${header}<messages>\n${lines.join('\n')}\n</messages>`;
 }
 
 export function stripInternalTags(text: string): string {

@@ -10,11 +10,16 @@ import {
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
+  CREDENTIAL_PROXY_PORT,
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
   TIMEZONE,
 } from './config.js';
+import {
+  CONTAINER_RUNTIME_BIN,
+  stopContainer,
+} from './container-runtime.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
@@ -32,7 +37,7 @@ export interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   model?: string; // Claude model to use (opus-4-6, sonnet, haiku)
-  secrets?: Record<string, string>;
+  assistantName?: string;
 }
 
 export interface ContainerOutput {
@@ -198,38 +203,6 @@ function buildVolumeMounts(
   return mounts;
 }
 
-/**
- * Read allowed secrets from .env for passing to the container via stdin.
- * Secrets are never written to disk or mounted as files.
- */
-function readSecrets(): Record<string, string> {
-  const envFile = path.join(process.cwd(), '.env');
-  if (!fs.existsSync(envFile)) return {};
-
-  const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
-  const secrets: Record<string, string> = {};
-  const content = fs.readFileSync(envFile, 'utf-8');
-
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    if (!allowedVars.includes(key)) continue;
-    let value = trimmed.slice(eqIdx + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (value) secrets[key] = value;
-  }
-
-  return secrets;
-}
-
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
@@ -238,6 +211,14 @@ function buildContainerArgs(
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Credential proxy: containers talk to this instead of directly to Anthropic API.
+  // Secrets are injected by the proxy — no real credentials exist in the container.
+  // Apple Container's VM uses 192.168.64.1 as the host gateway IP.
+  args.push(
+    '-e',
+    `ANTHROPIC_BASE_URL=http://192.168.64.1:${CREDENTIAL_PROXY_PORT}`,
+  );
 
   // Pencil MCP: expose HTTP endpoint to container via host gateway IP
   const PENCIL_MCP_PORT = 8222;
@@ -309,7 +290,7 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
-    const container = spawn('container', containerArgs, {
+    const container = spawn(CONTAINER_RUNTIME_BIN, containerArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -320,12 +301,10 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    // Pass secrets via stdin (never written to disk or mounted as files)
-    input.secrets = readSecrets();
+    // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
+    // No real secrets exist in the container environment.
     container.stdin.write(JSON.stringify(input));
     container.stdin.end();
-    // Remove secrets from input so they don't appear in logs
-    delete input.secrets;
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
     let parseBuffer = '';
@@ -419,7 +398,7 @@ export async function runContainerAgent(
         { group: group.name, containerName },
         'Container timeout, stopping gracefully',
       );
-      exec(`container stop ${containerName}`, { timeout: 15000 }, (err) => {
+      exec(stopContainer(containerName), { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn(
             { group: group.name, containerName, err },
